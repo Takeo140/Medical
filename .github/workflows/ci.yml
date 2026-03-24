@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Lean + mathlib Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan
+        run: |
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+      - name: Setup lakefile
+        run: |
+          elan default leanprover/lean4:stable
+          if [ ! -f lakefile.lean ]; then
+            cat << EOF > lakefile.lean
+          import Lake
+          open Lake DSL
+          package meta_axiom
+          require mathlib from git "https://github.com/leanprover-community/mathlib4"
+          lean_lib MetaAxioms
+          EOF
+          fi
+          lake update
+
+      - name: Mathlib cache
+        run: lake exe cache get || true
+
+      - name: Build
+        run: lake build
