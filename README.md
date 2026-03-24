@@ -4,7 +4,7 @@
 **Author:** Takeo Yamamoto  
 **Date:** March 2026, Kanazawa, Japan  
 **License:** [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
-DOI: ( https://doi.org/10.5281/zenodo.19160646 )
+DOI: (https://doi.org/10.5281/zenodo.19210030)
 
 ### Synopsis
 This repository defines genetic diseases as **"information-space bugs"** and provides a universal mathematical framework to derive **optimal repair patches** using **Lean 4**. 
