@@ -26,3 +26,4 @@ This work is released under **CC BY 4.0**. It is intended as a **Public Infrastr
 
 ---
 *Verified by Lean 4. Built for the era of Autonomous AI Research.*
+This framework provides a deterministic pre-screening layer for mRNA sequence design and variant effect evaluation.
