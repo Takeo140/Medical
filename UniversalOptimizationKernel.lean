@@ -1,42 +1,57 @@
-import Mathlib.Analysis.Calculus.FDeriv.Basic
+import Mathlib.Analysis.SpecialFunctions.Exp
 import Mathlib.Topology.MetricSpace.Basic
 
 namespace UniversalOptimizationKernel
 
-/-- 1. 生命システムの一般状態ベクトル -/
+@[ext]
 structure BioState where
-  genomic_integrity : ℝ      -- ゲノムの整合性（癌・変異）
-  metabolic_balance : ℝ      -- 代謝の平衡（糖尿病・エネルギー）
-  proteostatic_health : ℝ    -- タンパク質品質（神経変性・老化）
-  immune_calibration : ℝ     -- 免疫の正当性（自己免疫・感染）
+  genomic_integrity   : ℝ
+  metabolic_balance   : ℝ
+  proteostatic_health : ℝ
+  immune_calibration  : ℝ
 
-/-- 2. 生命の「野生型（Normal）」を定義する不変量 -/
 def is_wildtype (s : BioState) : Prop :=
-  s.genomic_integrity > 0.99 ∧ 
+  s.genomic_integrity > 0.99 ∧
   s.metabolic_balance ∈ Set.Icc 0.8 1.2 ∧
   s.proteostatic_health > 0.9 ∧
   s.immune_calibration > 0.9
 
-/-- 3. 総合的な最適化ポテンシャル関数 (V)
-    エントロピーの増大（疾患）を最小化する勾配。
--/
 noncomputable def optimization_potential (s : BioState) : ℝ :=
-  (1 - s.genomic_integrity)^2 + 
-  (1 - s.metabolic_balance)^2 + 
-  (1 - s.proteostatic_health)^2 + 
+  (1 - s.genomic_integrity)^2 +
+  (1 - s.metabolic_balance)^2 +
+  (1 - s.proteostatic_health)^2 +
   (1 - s.immune_calibration)^2
 
-/-- 4. 総合修復定理：
-    いかなる多臓器不全や複合疾患の状態にあっても、
-    ポテンシャル関数の勾配降下（適切な介入）により、
-    システムは野生型（Normal）の近傍へ必ず収束する。
--/
+lemma V_nonneg (s : BioState) : 0 ≤ optimization_potential s := by
+  unfold optimization_potential; positivity
+
+/-- 指数減衰パス：各成分が wildtype（= 1）へ指数収束 -/
+noncomputable def decay_path (b : BioState) (t : ℝ) : BioState where
+  genomic_integrity   := 1 + (b.genomic_integrity   - 1) * Real.exp (-t)
+  metabolic_balance   := 1 + (b.metabolic_balance   - 1) * Real.exp (-t)
+  proteostatic_health := 1 + (b.proteostatic_health - 1) * Real.exp (-t)
+  immune_calibration  := 1 + (b.immune_calibration  - 1) * Real.exp (-t)
+
+lemma decay_path_at_zero (b : BioState) : decay_path b 0 = b := by
+  ext <;> simp [decay_path, Real.exp_zero]
+
+/-- V(path t) = V(initial) * exp(-t)² という具体形 -/
+lemma potential_along_decay (b : BioState) (t : ℝ) :
+    optimization_potential (decay_path b t) =
+    optimization_potential b * Real.exp (-t) ^ 2 := by
+  simp only [optimization_potential, decay_path]; ring
+
 theorem universal_recovery_possible (initial : BioState) :
-  ∃ (path : ℝ → BioState), 
-    path 0 = initial ∧ 
-    Filter.Tendsto (λ t => optimization_potential (path t)) Filter.atTop (nhds 0) :=
-by
-  -- ポテンシャル関数の凸性と、物理的介入（医薬側のセレクト）の存在を仮定
-  sorry
+    ∃ path : ℝ → BioState,
+      path 0 = initial ∧
+      Filter.Tendsto (fun t => optimization_potential (path t))
+        Filter.atTop (nhds 0) := by
+  refine ⟨decay_path initial, decay_path_at_zero initial, ?_⟩
+  simp_rw [potential_along_decay]
+  -- exp(-t)^2 → 0 （Mathlibの定理を使用）
+  have h_exp : Filter.Tendsto (fun t : ℝ => Real.exp (-t) ^ 2)
+      Filter.atTop (nhds 0) := by
+    simpa [zero_pow] using Real.tendsto_exp_neg_atTop_nhds_zero.pow 2
+  simpa [mul_zero] using h_exp.const_mul (optimization_potential initial)
 
 end UniversalOptimizationKernel
