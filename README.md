@@ -22,7 +22,7 @@ By shifting from statistical medicine to **Formal Verification**, we provide imm
 3.  **Physical Output:** Immediate synthesis via existing mRNA manufacturing infrastructure (e.g., LNP platforms).
 
 ### Statement of Open Access
-This work is released under **approach2.0**. It is intended as a **Public Infrastructure** for humanity. By open-sourcing these "genetic security patches," we aim to bypass traditional pharmaceutical monopolies and provide low-cost, universal access to life-saving "Medical OS" updates.
+This work is released under **Apache2.0**. It is intended as a **Public Infrastructure** for humanity. By open-sourcing these "genetic security patches," we aim to bypass traditional pharmaceutical monopolies and provide low-cost, universal access to life-saving "Medical OS" updates.
 
 ---
 *Verified by Lean 4. Built for the era of Autonomous AI Research.*
