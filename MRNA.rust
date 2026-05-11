@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 // ─────────────────────────────────────────────
-// 1. 型定義：DNA と RNA を型レベルで分離
+// 1. 型定義
 // ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -15,11 +15,10 @@ pub enum DnaNucleotide { G, A, C, T }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RnaNucleotide { G, A, C, U }
 
-/// コドン（RNA 3塩基）
 pub type Codon = (RnaNucleotide, RnaNucleotide, RnaNucleotide);
 
 // ─────────────────────────────────────────────
-// 2. アミノ酸定義
+// 2. アミノ酸
 // ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -45,15 +44,17 @@ pub enum MrnaError {
     EmptySequence,
     NonMultipleOfThree(usize),
     UnknownCodon(Codon),
+    OutOfBoundsPosition(usize), // [FIX 1] 追加
 }
 
 impl fmt::Display for MrnaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidBase(c)        => write!(f, "不正な塩基文字: '{c}'"),
-            Self::EmptySequence         => write!(f, "空の配列"),
-            Self::NonMultipleOfThree(n) => write!(f, "配列長 {n} が3の倍数でない"),
-            Self::UnknownCodon(c)       => write!(f, "未定義コドン: {c:?}"),
+            Self::InvalidBase(c)           => write!(f, "不正な塩基文字: '{c}'"),
+            Self::EmptySequence            => write!(f, "空の配列"),
+            Self::NonMultipleOfThree(n)    => write!(f, "配列長 {n} が3の倍数でない"),
+            Self::UnknownCodon(c)          => write!(f, "未定義コドン: {c:?}"),
+            Self::OutOfBoundsPosition(pos) => write!(f, "変異位置 {pos} が配列長を超えている"),
         }
     }
 }
@@ -62,14 +63,10 @@ impl fmt::Display for MrnaError {
 // 4. 入力データ構造
 // ─────────────────────────────────────────────
 
-/// パスロジーデータ：疾患遺伝子情報を構造化
 #[derive(Debug, Clone)]
 pub struct PathologyData {
-    /// 遺伝子名（例: "SNCA", "APP", "PTEN"）
     pub gene_name: String,
-    /// DNA 配列（大文字 G/A/C/T）
     pub dna_sequence: String,
-    /// 点変異リスト [(位置, 変異後塩基)]
     pub mutations: Vec<(usize, char)>,
 }
 
@@ -87,7 +84,6 @@ impl PathologyData {
         self
     }
 
-    /// FASTA形式の文字列からパース（>header\nSEQUENCE）
     pub fn from_fasta(fasta: &str) -> Result<Self, MrnaError> {
         let mut lines = fasta.lines();
         let header = lines.next().unwrap_or("").trim_start_matches('>');
@@ -102,8 +98,7 @@ impl PathologyData {
 }
 
 // ─────────────────────────────────────────────
-// 5. ヒト最適化コドンテーブル
-//    同一アミノ酸の中でGC含量・翻訳速度が最も高いコドンを選択
+// 5. コドンテーブル
 // ─────────────────────────────────────────────
 
 fn human_optimized_codon_table() -> HashMap<AminoAcid, Codon> {
@@ -133,32 +128,31 @@ fn human_optimized_codon_table() -> HashMap<AminoAcid, Codon> {
     ].into_iter().collect()
 }
 
-/// 標準 RNA コドン → アミノ酸 変換表
 fn codon_to_amino(codon: &Codon) -> Option<AminoAcid> {
     use RnaNucleotide::*;
     Some(match codon {
-        (U,U,U)|(U,U,C)                         => AminoAcid::Phe,
-        (U,U,A)|(U,U,G)|(C,U,U)|(C,U,C)|(C,U,A)|(C,U,G) => AminoAcid::Leu,
-        (A,U,U)|(A,U,C)|(A,U,A)                 => AminoAcid::Ile,
-        (A,U,G)                                  => AminoAcid::Met,
-        (G,U,U)|(G,U,C)|(G,U,A)|(G,U,G)        => AminoAcid::Val,
-        (U,C,U)|(U,C,C)|(U,C,A)|(U,C,G)|(A,G,U)|(A,G,C) => AminoAcid::Ser,
-        (C,C,U)|(C,C,C)|(C,C,A)|(C,C,G)        => AminoAcid::Pro,
-        (A,C,U)|(A,C,C)|(A,C,A)|(A,C,G)        => AminoAcid::Thr,
-        (G,C,U)|(G,C,C)|(G,C,A)|(G,C,G)        => AminoAcid::Ala,
-        (U,A,U)|(U,A,C)                          => AminoAcid::Tyr,
-        (C,A,U)|(C,A,C)                          => AminoAcid::His,
-        (C,A,A)|(C,A,G)                          => AminoAcid::Gln,
-        (A,A,U)|(A,A,C)                          => AminoAcid::Asn,
-        (A,A,A)|(A,A,G)                          => AminoAcid::Lys,
-        (G,A,U)|(G,A,C)                          => AminoAcid::Asp,
-        (G,A,A)|(G,A,G)                          => AminoAcid::Glu,
-        (U,G,U)|(U,G,C)                          => AminoAcid::Cys,
-        (U,G,G)                                  => AminoAcid::Trp,
-        (C,G,U)|(C,G,C)|(C,G,A)|(C,G,G)|(A,G,A)|(A,G,G) => AminoAcid::Arg,
-        (G,G,U)|(G,G,C)|(G,G,A)|(G,G,G)        => AminoAcid::Gly,
-        (U,A,A)|(U,A,G)|(U,G,A)                 => AminoAcid::Stop,
-        _                                         => return None,
+        (U,U,U)|(U,U,C)                                               => AminoAcid::Phe,
+        (U,U,A)|(U,U,G)|(C,U,U)|(C,U,C)|(C,U,A)|(C,U,G)             => AminoAcid::Leu,
+        (A,U,U)|(A,U,C)|(A,U,A)                                       => AminoAcid::Ile,
+        (A,U,G)                                                        => AminoAcid::Met,
+        (G,U,U)|(G,U,C)|(G,U,A)|(G,U,G)                              => AminoAcid::Val,
+        (U,C,U)|(U,C,C)|(U,C,A)|(U,C,G)|(A,G,U)|(A,G,C)             => AminoAcid::Ser,
+        (C,C,U)|(C,C,C)|(C,C,A)|(C,C,G)                              => AminoAcid::Pro,
+        (A,C,U)|(A,C,C)|(A,C,A)|(A,C,G)                              => AminoAcid::Thr,
+        (G,C,U)|(G,C,C)|(G,C,A)|(G,C,G)                              => AminoAcid::Ala,
+        (U,A,U)|(U,A,C)                                                => AminoAcid::Tyr,
+        (C,A,U)|(C,A,C)                                                => AminoAcid::His,
+        (C,A,A)|(C,A,G)                                                => AminoAcid::Gln,
+        (A,A,U)|(A,A,C)                                                => AminoAcid::Asn,
+        (A,A,A)|(A,A,G)                                                => AminoAcid::Lys,
+        (G,A,U)|(G,A,C)                                                => AminoAcid::Asp,
+        (G,A,A)|(G,A,G)                                                => AminoAcid::Glu,
+        (U,G,U)|(U,G,C)                                                => AminoAcid::Cys,
+        (U,G,G)                                                        => AminoAcid::Trp,
+        (C,G,U)|(C,G,C)|(C,G,A)|(C,G,G)|(A,G,A)|(A,G,G)             => AminoAcid::Arg,
+        (G,G,U)|(G,G,C)|(G,G,A)|(G,G,G)                              => AminoAcid::Gly,
+        (U,A,A)|(U,A,G)|(U,G,A)                                       => AminoAcid::Stop,
+        _                                                               => return None,
     })
 }
 
@@ -209,7 +203,6 @@ impl Default for YamamotoCompiler {
 impl YamamotoCompiler {
     pub fn new() -> Self { Self::default() }
 
-    /// 文字 → DnaNucleotide
     fn parse_base(c: char) -> Result<DnaNucleotide, MrnaError> {
         match c {
             'G' => Ok(DnaNucleotide::G),
@@ -220,24 +213,25 @@ impl YamamotoCompiler {
         }
     }
 
-    /// DNA 文字列 → Vec<DnaNucleotide>
     fn parse_dna(seq: &str) -> Result<Vec<DnaNucleotide>, MrnaError> {
         if seq.is_empty() { return Err(MrnaError::EmptySequence); }
         seq.chars().map(Self::parse_base).collect()
     }
 
-    /// 点変異の適用
+    // [FIX 1] 境界チェックを追加。範囲外位置は OutOfBoundsPosition エラーを返す
     fn apply_mutations(
         mut dna: Vec<DnaNucleotide>,
         mutations: &[(usize, char)],
     ) -> Result<Vec<DnaNucleotide>, MrnaError> {
         for &(pos, base) in mutations {
+            if pos >= dna.len() {
+                return Err(MrnaError::OutOfBoundsPosition(pos));
+            }
             dna[pos] = Self::parse_base(base)?;
         }
         Ok(dna)
     }
 
-    /// DNA → RNA 転写（T → U）
     fn transcribe(dna: Vec<DnaNucleotide>) -> Vec<RnaNucleotide> {
         dna.into_iter().map(|n| match n {
             DnaNucleotide::G => RnaNucleotide::G,
@@ -247,7 +241,6 @@ impl YamamotoCompiler {
         }).collect()
     }
 
-    /// RNA → タンパク質翻訳（コドン単位）
     fn translate(rna: &[RnaNucleotide]) -> Result<Vec<AminoAcid>, MrnaError> {
         if rna.len() % 3 != 0 {
             return Err(MrnaError::NonMultipleOfThree(rna.len()));
@@ -260,15 +253,16 @@ impl YamamotoCompiler {
             .collect()
     }
 
-    /// タンパク質配列 → ヒト最適化 mRNA
+    // [FIX 4] [] インデックスをパニック原因明示の expect に変更
     fn optimize(&self, protein: &[AminoAcid]) -> Vec<RnaNucleotide> {
         protein.iter().flat_map(|aa| {
-            let (c1, c2, c3) = self.codon_table[aa];
+            let (c1, c2, c3) = *self.codon_table
+                .get(aa)
+                .expect("コドンテーブルに未登録のアミノ酸");
             [c1, c2, c3]
         }).collect()
     }
 
-    /// GC含量（%）
     fn gc_content(seq: &[RnaNucleotide]) -> f64 {
         if seq.is_empty() { return 0.0; }
         let gc = seq.iter()
@@ -277,26 +271,21 @@ impl YamamotoCompiler {
         gc as f64 / seq.len() as f64 * 100.0
     }
 
-    /// メインパイプライン：PathologyData → MrnaOutput
     pub fn compile(&self, data: &PathologyData) -> Result<MrnaOutput, MrnaError> {
-        // 1. パース
-        let dna = Self::parse_dna(&data.dna_sequence)?;
-        // 2. 変異適用
-        let dna = Self::apply_mutations(dna, &data.mutations)?;
-        // 3. 転写
-        let rna = Self::transcribe(dna);
-        // 4. 翻訳
-        let protein = Self::translate(&rna)?;
-        // 5. コドン最適化
+        let dna      = Self::parse_dna(&data.dna_sequence)?;
+        let dna      = Self::apply_mutations(dna, &data.mutations)?;
+        let rna      = Self::transcribe(dna);
+        let protein  = Self::translate(&rna)?;
         let optimized = self.optimize(&protein);
-        let gc = Self::gc_content(&optimized);
-
+        let gc        = Self::gc_content(&optimized);
+        // [FIX 3] clone 不要: length を先に取得してからムーブ
+        let length_nt = optimized.len();
         Ok(MrnaOutput {
             gene_name: data.gene_name.clone(),
             protein_sequence: protein,
-            optimized_mrna: optimized.clone(),
             gc_content: gc,
-            length_nt: optimized.len(),
+            length_nt,
+            optimized_mrna: optimized,
         })
     }
 }
@@ -311,7 +300,6 @@ mod tests {
 
     fn compiler() -> YamamotoCompiler { YamamotoCompiler::new() }
 
-    /// ATG（Met）+ TGA（Stop）= 最短の完全ORF
     #[test]
     fn test_minimal_orf() {
         let data = PathologyData::new("TEST", "ATGTGA");
@@ -319,11 +307,12 @@ mod tests {
         assert_eq!(out.protein_sequence, vec![AminoAcid::Met, AminoAcid::Stop]);
     }
 
-    /// T→U 転写の確認
     #[test]
     fn test_transcription() {
-        let dna = vec![DnaNucleotide::A, DnaNucleotide::T,
-                       DnaNucleotide::G, DnaNucleotide::C];
+        let dna = vec![
+            DnaNucleotide::A, DnaNucleotide::T,
+            DnaNucleotide::G, DnaNucleotide::C,
+        ];
         let rna = YamamotoCompiler::transcribe(dna);
         assert_eq!(rna, vec![
             RnaNucleotide::A, RnaNucleotide::U,
@@ -331,10 +320,8 @@ mod tests {
         ]);
     }
 
-    /// GC含量が目標範囲（50–70%）内であることを確認
     #[test]
     fn test_gc_content_range() {
-        // Met(ATG) + Gly(GGC) + Stop(UGA) を最適化
         let data = PathologyData::new("GC_TEST", "ATGGGTTGA");
         let out = compiler().compile(&data).unwrap();
         assert!(
@@ -343,27 +330,24 @@ mod tests {
         );
     }
 
-    /// 点変異の適用確認（A→T → Met→Ile になる等）
+    // [FIX 2] 変異位置の修正: 3 → 4
+    // "ATGAGT": A(0) T(1) G(2) A(3) G(4) T(5)
+    // コドン: ATG(Met) AGT(Ser)
+    // pos=4: G→A で AGT→AAT = Asn
     #[test]
     fn test_mutation_applied() {
-        // ATGATG = Met-Met、位置2をTに（すでにT）ではなく位置2をGに → ATG AGT = Met-Ser
         let data = PathologyData::new("MUT", "ATGAGT")
-            .with_mutation(3, 'A'); // AGT → AAT = Asn
+            .with_mutation(4, 'A');
         let out = compiler().compile(&data).unwrap();
         assert_eq!(out.protein_sequence[1], AminoAcid::Asn);
     }
 
-    /// 不正塩基はエラーになる
     #[test]
     fn test_invalid_base() {
         let data = PathologyData::new("ERR", "ATGXGT");
-        assert_eq!(
-            compiler().compile(&data),
-            Err(MrnaError::InvalidBase('X'))
-        );
+        assert_eq!(compiler().compile(&data), Err(MrnaError::InvalidBase('X')));
     }
 
-    /// 3の倍数でない配列はエラー
     #[test]
     fn test_non_multiple_of_three() {
         let data = PathologyData::new("ERR2", "ATGT");
@@ -373,7 +357,17 @@ mod tests {
         );
     }
 
-    /// FASTA パーサー
+    // [FIX 1] 境界外変異のエラーテストを追加
+    #[test]
+    fn test_out_of_bounds_mutation() {
+        let data = PathologyData::new("OOB", "ATGTGA")
+            .with_mutation(99, 'G');
+        assert_eq!(
+            compiler().compile(&data),
+            Err(MrnaError::OutOfBoundsPosition(99))
+        );
+    }
+
     #[test]
     fn test_fasta_parse() {
         let fasta = ">SNCA_exon5\nATGTGA\n";
@@ -384,15 +378,14 @@ mod tests {
 }
 
 // ─────────────────────────────────────────────
-// 8. 使用例（main）
+// 8. 使用例
 // ─────────────────────────────────────────────
 
 fn main() {
     let compiler = YamamotoCompiler::new();
 
-    // α-シヌクレイン NAC 領域（簡略）
     let snca = PathologyData::new("SNCA_NAC", "ATGGTGGGCATGTGA")
-        .with_mutation(6, 'A'); // Val → ? の変異を模擬
+        .with_mutation(6, 'A');
 
     match compiler.compile(&snca) {
         Ok(out) => println!("{out}"),
