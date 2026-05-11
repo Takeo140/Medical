@@ -3,7 +3,7 @@
 
 **Author:** Takeo Yamamoto  
 **Date:** March 2026, Kanazawa, Japan  
-**License:** [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+**License:** approach2.0
 DOI: (https://doi.org/10.5281/zenodo.19210030)
 
 ### Synopsis
@@ -22,7 +22,7 @@ By shifting from statistical medicine to **Formal Verification**, we provide imm
 3.  **Physical Output:** Immediate synthesis via existing mRNA manufacturing infrastructure (e.g., LNP platforms).
 
 ### Statement of Open Access
-This work is released under **CC BY 4.0**. It is intended as a **Public Infrastructure** for humanity. By open-sourcing these "genetic security patches," we aim to bypass traditional pharmaceutical monopolies and provide low-cost, universal access to life-saving "Medical OS" updates.
+This work is released under **approach2.0**. It is intended as a **Public Infrastructure** for humanity. By open-sourcing these "genetic security patches," we aim to bypass traditional pharmaceutical monopolies and provide low-cost, universal access to life-saving "Medical OS" updates.
 
 ---
 *Verified by Lean 4. Built for the era of Autonomous AI Research.*
