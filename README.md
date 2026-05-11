@@ -3,7 +3,7 @@
 
 **Author:** Takeo Yamamoto  
 **Date:** March 2026, Kanazawa, Japan  
-**License:** approach2.0
+**License:** Apache2.0
 DOI: (https://doi.org/10.5281/zenodo.19210030)
 
 ### Synopsis
