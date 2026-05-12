@@ -56,7 +56,12 @@ theorem optimal_balance_exists
     (candidates : List IonCurrents)
     (h : candidates ≠ []) :
     ∃ c, is_optimal_balance target_qt candidates c := by
-  -- MetaRepair と同様の構造で証明可能。CI Green を担保。
-  sorry
+  -- 候補リストが空でないという前提から、最初の要素を取得
+  have hne : candidates.length > 0 := by
+    omega
+  -- 有限リスト上のコスト関数は最小値を持つ
+  -- Fintype上の最小値の存在性を利用
+  obtain ⟨c, hc_mem, hc_min⟩ := List.exists_min_image (fun c => total_lqts_cost target_qt c) candidates hne
+  exact ⟨c, hc_mem, hc_min⟩
 
 end MetaLQTS
