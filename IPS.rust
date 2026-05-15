@@ -1,0 +1,149 @@
+// =============================================================
+//  IPS_Construction.rs
+//  iPS細胞構築の実行フレームワーク (Yamamoto Takeo / Apache 2.0)
+// =============================================================
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Base { A, T, G, C }
+
+impl Base {
+    pub fn complement(&self) -> Self {
+        match self {
+            Base::A => Base::T,
+            Base::T => Base::A,
+            Base::G => Base::C,
+            Base::C => Base::G,
+        }
+    }
+}
+
+// § 1 山中因子 (Yamanaka Factors)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YamanakaFactor {
+    OCT4,
+    SOX2,
+    KLF4,
+    CMYC,
+}
+
+pub type FactorSet = Vec<YamanakaFactor>;
+
+pub fn get_oskm() -> FactorSet {
+    vec![YamanakaFactor::OCT4, YamanakaFactor::SOX2, YamanakaFactor::KLF4, YamanakaFactor::CMYC]
+}
+
+pub fn get_osk() -> FactorSet {
+    vec![YamanakaFactor::OCT4, YamanakaFactor::SOX2, YamanakaFactor::KLF4]
+}
+
+// § 2 プロモーター配列
+pub fn promoter_seq(f: &YamanakaFactor) -> Vec<Base> {
+    use Base::*;
+    match f {
+        YamanakaFactor::OCT4 => vec![G,G,C,C,G,C,T,G,G,G,G,C,G,C,G],
+        YamanakaFactor::SOX2 => vec![A,T,T,G,T,T,G,T,T,A,T,T,G,T,T],
+        YamanakaFactor::KLF4 => vec![G,G,G,C,G,G,G,G,C,G,G,G,C,G,G],
+        YamanakaFactor::CMYC => vec![C,A,C,G,T,G,C,A,C,G,T,G,C,A,C],
+    }
+}
+
+// § 3 細胞状態 (CellState)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CellState {
+    Somatic(String),
+    PartialReprog(u8), // PluripotencyScore: 0-10
+    IPSC(String),      // Clone ID
+}
+
+// § 4 リプログラミングプロトコル
+#[derive(Debug, Clone)]
+pub struct ReprogProtocol {
+    pub factors: FactorSet,
+    pub delivery: String,
+    pub culture_days: u32,
+    pub feeder_free: bool,
+}
+
+impl ReprogProtocol {
+    pub fn is_valid(&self) -> bool {
+        self.factors.contains(&YamanakaFactor::OCT4) &&
+        self.factors.contains(&YamanakaFactor::SOX2) &&
+        !self.delivery.is_empty() &&
+        self.culture_days >= 14
+    }
+}
+
+// § 5 多能性マーカー検証
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PluripotencyMarker {
+    NANOG, OCT4Expr, SOX2Expr, SSEA4, TRA160
+}
+
+pub struct MarkerProfile {
+    pub expressed: Vec<PluripotencyMarker>,
+}
+
+impl MarkerProfile {
+    pub fn is_certified(&self) -> bool {
+        let required = vec![
+            PluripotencyMarker::NANOG,
+            PluripotencyMarker::OCT4Expr,
+            PluripotencyMarker::SOX2Expr,
+            PluripotencyMarker::SSEA4,
+        ];
+        required.iter().all(|m| self.expressed.contains(m))
+    }
+}
+
+// § 6 状態遷移関数 (再プログラミング写像)
+fn protocol_score(p: &ReprogProtocol) -> u8 {
+    let base_score = if p.factors == get_oskm() { 8 }
+                     else if p.factors == get_osk() { 6 }
+                     else { (p.factors.len() * 2) as u8 };
+    
+    let day_bonus = if p.culture_days >= 21 { 2 } else { 0 };
+    (base_score + day_bonus).min(10)
+}
+
+pub fn reprogram(src: &CellState, p: &ReprogProtocol) -> CellState {
+    if !p.factors.contains(&YamanakaFactor::OCT4) || !p.factors.contains(&YamanakaFactor::SOX2) {
+        return src.clone();
+    }
+
+    let score = protocol_score(p);
+    if score >= 10 {
+        CellState::IPSC(format!("clone_{}_d{}", p.delivery, p.culture_days))
+    } else {
+        CellState::PartialReprog(score)
+    }
+}
+
+// § 10 実行メインプロセス (山本さんのパイプライン)
+fn main() {
+    let fibroblast = CellState::Somatic("human_fibroblast".to_string());
+    
+    let protocol = ReprogProtocol {
+        factors: get_oskm(),
+        delivery: "episomal_vector".to_string(),
+        culture_days: 28,
+        feeder_free: true,
+    };
+
+    println!("--- Reprogramming Pipeline ---");
+    let result = reprogram(&fibroblast, &protocol);
+    println!("Final State: {:?}", result);
+
+    let profile = MarkerProfile {
+        expressed: vec![
+            PluripotencyMarker::NANOG,
+            PluripotencyMarker::OCT4Expr,
+            PluripotencyMarker::SOX2Expr,
+            PluripotencyMarker::SSEA4,
+            PluripotencyMarker::TRA160,
+        ],
+    };
+
+    if profile.is_certified() {
+        println!("Certification: PASSED (Logic Verified by Yamamoto-DNA-Engine)");
+    }
+}
