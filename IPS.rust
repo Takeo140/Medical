@@ -84,25 +84,31 @@ pub struct MarkerProfile {
 }
 
 impl MarkerProfile {
-    pub fn is_certified(&self) -> bool {
-        let required = vec![
+    pub fn required() -> Vec<PluripotencyMarker> {
+        vec![
             PluripotencyMarker::NANOG,
             PluripotencyMarker::OCT4Expr,
             PluripotencyMarker::SOX2Expr,
             PluripotencyMarker::SSEA4,
-        ];
-        required.iter().all(|m| self.expressed.contains(m))
+        ]
+    }
+
+    pub fn is_certified(&self) -> bool {
+        Self::required().iter().all(|m| self.expressed.contains(m))
     }
 }
 
 // § 6 状態遷移関数 (再プログラミング写像)
 fn protocol_score(p: &ReprogProtocol) -> u8 {
-    let base_score = if p.factors == get_oskm() { 8 }
-                     else if p.factors == get_osk() { 6 }
-                     else { (p.factors.len() * 2) as u8 };
-    
-    let day_bonus = if p.culture_days >= 21 { 2 } else { 0 };
-    (base_score + day_bonus).min(10)
+    let base_score: u8 =
+        if p.factors == get_oskm()      { 8 }
+        else if p.factors == get_osk()  { 6 }
+        else { (p.factors.len() * 2).min(255) as u8 };
+
+    let day_bonus: u8 = if p.culture_days >= 21 { 2 } else { 0 };
+
+    // [FIX] + → saturating_add: debug ビルドのオーバーフローパニックを防止
+    base_score.saturating_add(day_bonus).min(10)
 }
 
 pub fn reprogram(src: &CellState, p: &ReprogProtocol) -> CellState {
@@ -118,10 +124,30 @@ pub fn reprogram(src: &CellState, p: &ReprogProtocol) -> CellState {
     }
 }
 
-// § 10 実行メインプロセス (山本さんのパイプライン)
+// § 8 逆相補配列ユーティリティ（Lean §8 対応・未移植を補完）
+pub fn bases_to_string(bases: &[Base]) -> String {
+    bases.iter().map(|b| match b {
+        Base::A => 'A',
+        Base::T => 'T',
+        Base::G => 'G',
+        Base::C => 'C',
+    }).collect()
+}
+
+pub fn promoter_template_strand(f: &YamanakaFactor) -> Vec<Base> {
+    promoter_seq(f).iter().rev().map(|b| b.complement()).collect()
+}
+
+pub fn oct4_promoter_pair() -> (Vec<Base>, Vec<Base>) {
+    let sense    = promoter_seq(&YamanakaFactor::OCT4);
+    let template = promoter_template_strand(&YamanakaFactor::OCT4);
+    (sense, template)
+}
+
+// § 9 実行メインプロセス
 fn main() {
     let fibroblast = CellState::Somatic("human_fibroblast".to_string());
-    
+
     let protocol = ReprogProtocol {
         factors: get_oskm(),
         delivery: "episomal_vector".to_string(),
@@ -130,8 +156,14 @@ fn main() {
     };
 
     println!("--- Reprogramming Pipeline ---");
+
+    // [FIX] reprogram 結果の iPSC 到達を main でも確認
     let result = reprogram(&fibroblast, &protocol);
     println!("Final State: {:?}", result);
+    assert!(
+        matches!(result, CellState::IPSC(_)),
+        "reprogram failed: expected IPSC, got {:?}", result
+    );
 
     let profile = MarkerProfile {
         expressed: vec![
@@ -143,7 +175,86 @@ fn main() {
         ],
     };
 
-    if profile.is_certified() {
-        println!("Certification: PASSED (Logic Verified by Yamamoto-DNA-Engine)");
+    assert!(profile.is_certified(), "Certification failed");
+    println!("Certification: PASSED (Logic Verified by Yamamoto-DNA-Engine)");
+}
+
+// § 7 単体テスト（Lean 定理 7.1 / 7.2 / 7.3 / pipeline_certified 対応）
+// [FIX] テストモジュールが完全に欠落していたため追加
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // theorem 7.1: OSKM × 21日培養 → iPSC に到達する
+    #[test]
+    fn oskm_21days_yields_ipsc() {
+        let p = ReprogProtocol {
+            factors: get_oskm(),
+            delivery: "retrovirus".to_string(),
+            culture_days: 21,
+            feeder_free: true,
+        };
+        let src = CellState::Somatic("fibroblast".to_string());
+        let result = reprogram(&src, &p);
+        assert!(
+            matches!(result, CellState::IPSC(_)),
+            "expected IPSC, got {:?}", result
+        );
+    }
+
+    // theorem 7.2: 必須因子欠如 → 状態不変
+    #[test]
+    fn missing_oct4_no_change() {
+        let p = ReprogProtocol {
+            factors: vec![YamanakaFactor::SOX2, YamanakaFactor::KLF4],
+            delivery: "episomal".to_string(),
+            culture_days: 21,
+            feeder_free: false,
+        };
+        let src = CellState::Somatic("fibroblast".to_string());
+        assert_eq!(reprogram(&src, &p), src);
+    }
+
+    // theorem 7.3: 有効プロトコルは is_valid を満たす
+    #[test]
+    fn oskm_protocol_valid() {
+        let p = ReprogProtocol {
+            factors: get_oskm(),
+            delivery: "retrovirus".to_string(),
+            culture_days: 14,
+            feeder_free: true,
+        };
+        assert!(p.is_valid());
+    }
+
+    // theorem pipeline_certified: iPS認定基準を満たす
+    #[test]
+    fn pipeline_certified() {
+        let profile = MarkerProfile {
+            expressed: vec![
+                PluripotencyMarker::NANOG,
+                PluripotencyMarker::OCT4Expr,
+                PluripotencyMarker::SOX2Expr,
+                PluripotencyMarker::SSEA4,
+                PluripotencyMarker::TRA160,
+            ],
+        };
+        assert!(profile.is_certified());
+    }
+
+    // 追加: 部分リプログラミングのスコア確認
+    #[test]
+    fn osk_partial_reprog() {
+        let p = ReprogProtocol {
+            factors: get_osk(),
+            delivery: "episomal".to_string(),
+            culture_days: 14, // day_bonus なし
+            feeder_free: false,
+        };
+        let src = CellState::Somatic("fibroblast".to_string());
+        assert_eq!(reprogram(&src, &p), CellState::PartialReprog(6));
     }
 }
+// =============================================================
+//  End of IPS_Construction.rs
+// =============================================================
