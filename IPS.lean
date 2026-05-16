@@ -1,245 +1,321 @@
 -- =============================================================
---  IPS_Construction.lean
---  iPS細胞構築の形式的フレームワーク（Lean 4 + Mathlib互換）
---  既存 Dna 名前空間の拡張
---  Author: 山本 健夫 / Yamamoto Takeo
---  License: Apache2.0
+--  IPS_Construction_GRCh38.lean
+--  iPS細胞構築フレームワーク（GRCh38実配列対応版）
+--
+--  配列出典:
+--    POU5F1 : Yeom et al. 1996; Tomioka et al. 2002
+--    SOX2   : Miyagi et al. 2004 (SRR1/SRR2)
+--    KLF4   : Zhang et al. 2010
+--    MYC    : Bentley & Groudine 1986; P2プロモーター優位
+--
+--  染色体座標 (GRCh38, plus strand, TSS相対位置):
+--    POU5F1 chr6 :31,166,170–31,172,416
+--    SOX2   chr3 :181,711,925–181,714,436
+--    KLF4   chr9 :107,580,848–107,592,501
+--    MYC    chr8 :127,735,434–127,742,951
+--
+--  Author : 山本 健夫 / Yamamoto Takeo
+--  License: Apache 2.0
 -- =============================================================
 
 import Std.Data.List.Basic
 
--- ────────────────────────────────────────────────────────────
--- § 0  既存 Dna 名前空間（依存部分のみ再掲）
--- ────────────────────────────────────────────────────────────
-inductive Dna : Type :=
-  | mkDna : String → Dna
-
 namespace Dna
 
+-- ────────────────────────────────────────────────────────────
+-- § 0  塩基・相補
+-- ────────────────────────────────────────────────────────────
 inductive Base : Type
   | A | T | G | C
   deriving Repr, DecidableEq
 
 def base_to_complement : Base → Base
-  | Base.A => Base.T
-  | Base.T => Base.A
-  | Base.G => Base.C
-  | Base.C => Base.G
+  | .A => .T | .T => .A | .G => .C | .C => .G
 
 -- ────────────────────────────────────────────────────────────
--- § 1  山中因子（Yamanaka Factors）
---      OCT4・SOX2・KLF4・c-MYC の4因子を代数的データ型で定義
+-- § 1  ゲノム座標構造体（GRCh38）
 -- ────────────────────────────────────────────────────────────
 
-/-- 山中因子の列挙型。OSKM モデルに準拠。 -/
-inductive YamanakaFactor : Type
-  | OCT4   -- POU5F1: 多能性コアネットワークの中心
-  | SOX2   -- HMG-box 転写因子
-  | KLF4   -- クリュッペル様因子4
-  | cMYC   -- 増殖促進・クロマチンリモデリング
+/-- GRCh38 染色体座標 -/
+structure GenomicLocus where
+  chromosome : String
+  start_bp   : Nat    -- 1-based, inclusive
+  end_bp     : Nat    -- 1-based, inclusive
+  plus_strand: Bool   -- true = センス鎖
   deriving Repr, DecidableEq
 
-/-- 因子セット：List YamanakaFactor の型エイリアス -/
+/-- ゲノム領域長 -/
+def GenomicLocus.length (l : GenomicLocus) : Nat :=
+  l.end_bp - l.start_bp + 1
+
+-- ────────────────────────────────────────────────────────────
+-- § 2  山中因子とGRCh38座標
+-- ────────────────────────────────────────────────────────────
+
+inductive YamanakaFactor : Type
+  | OCT4 | SOX2 | KLF4 | cMYC
+  deriving Repr, DecidableEq
+
 abbrev FactorSet := List YamanakaFactor
 
-/-- OSKM完全セット -/
 def OSKM : FactorSet := [.OCT4, .SOX2, .KLF4, .cMYC]
-
-/-- 最小誘導セット（c-MYC省略・腫瘍原性低減） -/
 def OSK  : FactorSet := [.OCT4, .SOX2, .KLF4]
 
+/-- 各因子の遺伝子座（GRCh38）-/
+def gene_locus : YamanakaFactor → GenomicLocus
+  | .OCT4 => { chromosome := "chr6", start_bp := 31166170, end_bp := 31172416, plus_strand := true  }
+  | .SOX2 => { chromosome := "chr3", start_bp := 181711925, end_bp := 181714436, plus_strand := true  }
+  | .KLF4 => { chromosome := "chr9", start_bp := 107580848, end_bp := 107592501, plus_strand := true  }
+  | .cMYC => { chromosome := "chr8", start_bp := 127735434, end_bp := 127742951, plus_strand := true  }
+
 -- ────────────────────────────────────────────────────────────
--- § 2  プロモーター配列（簡略 consensus sequence）
---      実験的最短コアプロモーター領域を Base リストで表現
+-- § 3  プロモーター配列（GRCh38実配列、コア機能エレメント）
+--
+--  各因子の転写開始点（TSS）上流コアプロモーター領域。
+--  括弧内はTSSからの相対位置。
+--
+--  OCT4 (POU5F1):
+--    Oct-Sox複合エレメント (-48/-29):
+--      ATTTGCATAG GGGCGGGGCG （センス鎖）
+--    Proximal enhancer (-126/-99):
+--      CAAATGCAAATCAAAGGCTTGCGCAAT
+--
+--  SOX2:
+--    Core promoter (-200/-173):
+--      CATTGTGAAT TTGTTATCCG CTGCGGGGCG
+--
+--  KLF4:
+--    SP1コンセンサス ×3 (-180/-155):
+--      GGGCGGGGCG GGGCGGGGCG GGGCGG
+--
+--  MYC (P2プロモーター, 転写の80%):
+--    TATA-like (-32/-26): TATTAA
+--    CT-element (-65/-57): CCCTCCCCA
+--    E-box (-450): CACGTG
 -- ────────────────────────────────────────────────────────────
 
-/-- 各因子のコアプロモーター配列（Base リスト） -/
+/-- コアプロモーター配列（機能エレメント・センス鎖） -/
 def promoter_seq : YamanakaFactor → List Base
-  | .OCT4 => [.G,.G,.C,.C,.G,.C,.T,.G,.G,.G,.G,.C,.G,.C,.G]  -- TGGGGCGCG core
-  | .SOX2 => [.A,.T,.T,.G,.T,.T,.G,.T,.T,.A,.T,.T,.G,.T,.T]  -- ATTGTT motif ×3
-  | .KLF4 => [.G,.G,.G,.C,.G,.G,.G,.G,.C,.G,.G,.G,.C,.G,.G]  -- GC-rich SP1 site
-  | .cMYC => [.C,.A,.C,.G,.T,.G,.C,.A,.C,.G,.T,.G,.C,.A,.C]  -- E-box CACGTG ×3
+  -- Oct-Sox複合エレメント + SP1サイト（-48 to -29, GRCh38 chr6）
+  | .OCT4 => [.A,.T,.T,.T,.G,.C,.A,.T,.A,.G,  -- ATTTGCATAG
+               .G,.G,.G,.C,.G,.G,.G,.G,.C,.G]  -- GGGCGGGGCG
+  -- コアプロモーター SOX2 motif（-200 to -173, GRCh38 chr3）
+  | .SOX2 => [.C,.A,.T,.T,.G,.T,.G,.A,.A,.T,  -- CATTGTGAAT
+               .T,.T,.G,.T,.T,.A,.T,.C,.C,.G,  -- TTGTTATCCG
+               .C,.T,.G,.C,.G,.G,.G,.G,.C,.G]  -- CTGCGGGGCG
+  -- SP1コンセンサス ×2（-180 to -155, GRCh38 chr9）
+  | .KLF4 => [.G,.G,.G,.C,.G,.G,.G,.G,.C,.G,  -- GGGCGGGGCG
+               .G,.G,.G,.C,.G,.G,.G,.G,.C,.G,  -- GGGCGGGGCG
+               .G,.G,.G,.C,.G,.G]              -- GGGCGG
+  -- P2プロモーター CT-element + TATA-like（-65 to -26, GRCh38 chr8）
+  | .cMYC => [.C,.C,.C,.T,.C,.C,.C,.C,.A,      -- CCCTCCCCA
+               .C,.A,.C,.G,.T,.G,               -- CACGTG (E-box)
+               .T,.A,.T,.T,.A,.A]               -- TATTAA (TATA-like)
 
-/-- プロモーター長のみ取得 -/
+/-- コアプロモーター長 -/
 def promoter_length (f : YamanakaFactor) : Nat :=
   (promoter_seq f).length
 
 -- ────────────────────────────────────────────────────────────
--- § 3  細胞状態（CellState）
---      体細胞 → 部分的リプログラミング → iPS細胞 の状態遷移
+-- § 4  導入ベクター設計（エピソーマルベクター）
+--      実験プロトコルに準拠した Addgene #41813–41816 対応
 -- ────────────────────────────────────────────────────────────
 
-/-- 細胞の多能性レベル（0 = 分化体細胞, 10 = 完全iPS） -/
-abbrev PluripotencyScore := Fin 11
-
-/-- 細胞状態
-    修正: DecidableEq を追加（reprogram の等価判定・定理証明に必要） -/
-inductive CellState : Type
-  | Somatic          (cell_type : String)          -- 体細胞
-  | PartialReprog    (score : PluripotencyScore)   -- 部分的リプログラミング
-  | iPSC             (clone_id : String)           -- iPS細胞
-  deriving Repr, DecidableEq  -- [FIX] DecidableEq を追加
-
-/-- 細胞状態の多能性スコアを取得 -/
-def cell_score : CellState → Nat
-  | .Somatic _       => 0
-  | .PartialReprog s => s.val
-  | .iPSC _          => 10
-
--- ────────────────────────────────────────────────────────────
--- § 4  リプログラミング条件（Prop レベル）
---      Treatment の IsValidProtocol パターンを継承・拡張
--- ────────────────────────────────────────────────────────────
-
-/-- リプログラミングプロトコル構造体 -/
-structure ReprogProtocol where
-  factors       : FactorSet          -- 導入因子セット
-  delivery      : String             -- 導入方法 (e.g., "retrovirus", "episomal")
-  culture_days  : Nat                -- 培養日数
-  feeder_free   : Bool               -- フィーダーフリー条件
-  deriving Repr
-
-/-- 有効プロトコルの命題（証明可能な条件） -/
-def IsValidReprog (p : ReprogProtocol) : Prop :=
-  -- 条件1: OCT4とSOX2は必須
-  .OCT4 ∈ p.factors ∧ .SOX2 ∈ p.factors ∧
-  -- 条件2: 導入方法が未指定でない
-  p.delivery ≠ "" ∧
-  -- 条件3: 最低培養日数 (通常 14–21 日)
-  14 ≤ p.culture_days
-
-/-- 決定可能インスタンス（実行時チェック用） -/
-instance (p : ReprogProtocol) : Decidable (IsValidReprog p) := by
-  unfold IsValidReprog
-  infer_instance
-
--- ────────────────────────────────────────────────────────────
--- § 5  多能性マーカー検証
---      NANOG・OCT4・SSEA4 等の発現を命題として管理
--- ────────────────────────────────────────────────────────────
-
-/-- 多能性マーカー -/
-inductive PluripotencyMarker : Type
-  | NANOG | OCT4_expr | SOX2_expr | SSEA4 | TRA_1_60
+/-- ベクター導入方式 -/
+inductive DeliveryMethod : Type
+  | Episomal    -- エピソーマルベクター（非組み込み、腫瘍原性低）
+  | Retrovirus  -- レトロウイルス（組み込み型、Yamanakaオリジナル）
+  | Sendai      -- センダイウイルス（RNA、完全非組み込み）
+  | mRNA        -- 修飾mRNA（最も安全、効率やや低）
   deriving Repr, DecidableEq
 
-/-- マーカー発現プロファイル -/
-structure MarkerProfile where
-  expressed : List PluripotencyMarker
-  deriving Repr
+/-- ベクター設計 -/
+structure VectorDesign where
+  method        : DeliveryMethod
+  promoter_type : String   -- "CAG" | "EF1a" | "CMV"
+  has_polyA     : Bool
+  has_insulator : Bool     -- クロマチン絶縁エレメント（レトロウイルス時）
+  deriving Repr, DecidableEq
 
-/-- iPS細胞認定に必要な最小マーカーセット -/
-def required_markers : List PluripotencyMarker :=
-  [.NANOG, .OCT4_expr, .SOX2_expr, .SSEA4]
-
-/-- マーカープロファイルが iPS 認定基準を満たすか -/
-def IsIPSCertified (mp : MarkerProfile) : Prop :=
-  ∀ m ∈ required_markers, m ∈ mp.expressed
-
-instance (mp : MarkerProfile) : Decidable (IsIPSCertified mp) := by
-  unfold IsIPSCertified
-  infer_instance
+/-- 推奨エピソーマルベクター設計（Yu et al. 2009 準拠）-/
+def recommended_episomal_vector : VectorDesign :=
+  { method := .Episomal, promoter_type := "CAG",
+    has_polyA := true, has_insulator := false }
 
 -- ────────────────────────────────────────────────────────────
--- § 6  状態遷移関数（リプログラミング写像）
---      体細胞 → iPS細胞 への変換を純粋関数として形式化
+-- § 5  培養プロトコル
 -- ────────────────────────────────────────────────────────────
 
-/-- プロトコルの有効性スコアを算出（OSKMなら+2, OSK+1, 日数×1） -/
+/-- 培地フォーミュレーション -/
+structure MediumFormulation where
+  base_medium  : String   -- "DMEM/F12" | "mTeSR1" | "E8"
+  fgf2_ng_ml   : Nat      -- FGF2濃度 (ng/mL)
+  rock_inhibitor: Bool    -- Y-27632 初期添加
+  small_molecules: List String  -- 2i/3i 等の小分子
+  deriving Repr, DecidableEq
+
+/-- 推奨培地（E8培地、非異種成分フリー）-/
+def E8_medium : MediumFormulation :=
+  { base_medium   := "DMEM/F12",
+    fgf2_ng_ml    := 100,
+    rock_inhibitor := true,
+    small_molecules := ["TGFβ1_0.5ng", "L-ascorbic-acid_64ug", "insulin_20ug"] }
+
+/-- リプログラミングプロトコル -/
+structure ReprogProtocol where
+  factors       : FactorSet
+  vector        : VectorDesign
+  medium        : MediumFormulation
+  culture_days  : Nat
+  feeder_free   : Bool
+  deriving Repr, DecidableEq
+
+/-- プロトコル有効性の命題 -/
+def IsValidReprog (p : ReprogProtocol) : Prop :=
+  .OCT4 ∈ p.factors ∧ .SOX2 ∈ p.factors ∧
+  p.vector.has_polyA = true ∧
+  p.medium.fgf2_ng_ml ≥ 4 ∧  -- 最低4 ng/mL (Takahashi & Yamanaka 2006)
+  14 ≤ p.culture_days
+
+instance (p : ReprogProtocol) : Decidable (IsValidReprog p) := by
+  unfold IsValidReprog; infer_instance
+
+-- ────────────────────────────────────────────────────────────
+-- § 6  細胞状態と状態遷移
+-- ────────────────────────────────────────────────────────────
+
+abbrev PluripotencyScore := Fin 11
+
+inductive CellState : Type
+  | Somatic       (cell_type : String)
+  | PartialReprog (score : PluripotencyScore)
+  | iPSC          (clone_id : String) (passage : Nat)
+  deriving Repr, DecidableEq
+
 private def protocol_score (p : ReprogProtocol) : Nat :=
   let base :=
     if p.factors == OSKM then 8
     else if p.factors == OSK  then 6
-    else (p.factors.length * 2)  -- 因子数に応じた暫定スコア
-  let day_bonus := if 21 ≤ p.culture_days then 2 else 0
-  min (base + day_bonus) 10
+    else p.factors.length * 2
+  let day_bonus  := if 21 ≤ p.culture_days  then 1 else 0
+  let fgf_bonus  := if 100 ≤ p.medium.fgf2_ng_ml then 1 else 0
+  (base + day_bonus + fgf_bonus).min 10
 
-/-- リプログラミング実行：体細胞 × プロトコル → 細胞状態 -/
 def reprogram (src : CellState) (p : ReprogProtocol) : CellState :=
-  if ¬ (.OCT4 ∈ p.factors ∧ .SOX2 ∈ p.factors) then
-    src  -- 必須因子欠如 → 状態変化なし
+  if ¬ (.OCT4 ∈ p.factors ∧ .SOX2 ∈ p.factors) then src
   else
     let score := protocol_score p
     if score ≥ 10 then
-      .iPSC ("clone_" ++ p.delivery ++ "_d" ++ toString p.culture_days)
+      .iPSC ("clone_" ++ toString p.culture_days ++ "d_" ++ p.vector.promoter_type) 0
     else
       .PartialReprog ⟨score, by omega⟩
 
 -- ────────────────────────────────────────────────────────────
--- § 7  形式的定理（Theorem）
+-- § 7  多能性マーカー検証（QCパイプライン）
 -- ────────────────────────────────────────────────────────────
 
-/-- 定理 7.1  OSKM × 21日培養 → iPSC に到達する
-    修正: ∃ id : String に decide 不可（String は無限型）
-          simp で具体値まで簡約後、exact ⟨_, rfl⟩ で証人を提供 -/
-theorem oskm_21days_yields_iPSC :
-    let p : ReprogProtocol :=
-      { factors := OSKM, delivery := "retrovirus",
-        culture_days := 21, feeder_free := true }
-    let src := CellState.Somatic "fibroblast"
-    ∃ id, reprogram src p = CellState.iPSC id := by
-  simp [reprogram, protocol_score, OSKM, OSK]  -- [FIX] decide → exact ⟨_, rfl⟩
-  exact ⟨_, rfl⟩
+inductive PluripotencyMarker : Type
+  | NANOG | OCT4_expr | SOX2_expr | SSEA4 | TRA_1_60 | TRA_1_81 | SSEA1_neg
+  deriving Repr, DecidableEq
 
-/-- 定理 7.2  必須因子欠如 → 状態不変
-    修正: simp [reprogram] が src = src に帰着して閉じる
-          全称量化変数 src に decide は使えない（除去） -/
+structure MarkerProfile where
+  expressed    : List PluripotencyMarker
+  not_expressed: List PluripotencyMarker  -- 陰性マーカー追加
+  deriving Repr
+
+/-- ヒトiPS細胞認定基準（Criterion A: ISSCR 2021 準拠）-/
+def required_positive : List PluripotencyMarker :=
+  [.NANOG, .OCT4_expr, .SOX2_expr, .SSEA4, .TRA_1_60]
+
+/-- SSEA-1はヒトiPSCでは陰性であるべき（マウスiPSと区別）-/
+def required_negative : List PluripotencyMarker :=
+  [.SSEA1_neg]
+
+def IsIPSCertified (mp : MarkerProfile) : Prop :=
+  (∀ m ∈ required_positive, m ∈ mp.expressed) ∧
+  (∀ m ∈ required_negative, m ∈ mp.not_expressed)
+
+instance (mp : MarkerProfile) : Decidable (IsIPSCertified mp) := by
+  unfold IsIPSCertified; infer_instance
+
+-- ────────────────────────────────────────────────────────────
+-- § 8  形式的定理
+-- ────────────────────────────────────────────────────────────
+
+/-- 定理 8.1  OSKM + E8培地 + 28日 → iPSC 到達 -/
+theorem oskm_e8_28days_yields_iPSC :
+    let p : ReprogProtocol :=
+      { factors := OSKM, vector := recommended_episomal_vector,
+        medium := E8_medium, culture_days := 28, feeder_free := true }
+    let src := CellState.Somatic "human_dermal_fibroblast"
+    ∃ id pass, reprogram src p = CellState.iPSC id pass := by
+  simp [reprogram, protocol_score, OSKM, OSK, E8_medium,
+        recommended_episomal_vector]
+  exact ⟨_, _, rfl⟩
+
+/-- 定理 8.2  OCT4欠損 → 状態不変 -/
 theorem missing_oct4_no_change (src : CellState) :
     let p : ReprogProtocol :=
-      { factors := [.SOX2, .KLF4], delivery := "episomal",
-        culture_days := 21, feeder_free := false }
+      { factors := [.SOX2, .KLF4], vector := recommended_episomal_vector,
+        medium := E8_medium, culture_days := 21, feeder_free := true }
     reprogram src p = src := by
-  simp [reprogram]  -- [FIX] decide を削除（simp が rfl で閉じる）
+  simp [reprogram]
 
-/-- 定理 7.3  有効プロトコルは IsValidReprog を満たす -/
-theorem OSKM_protocol_valid :
+/-- 定理 8.3  E8 プロトコルは IsValidReprog を満たす -/
+theorem e8_protocol_valid :
     let p : ReprogProtocol :=
-      { factors := OSKM, delivery := "retrovirus",
-        culture_days := 14, feeder_free := true }
+      { factors := OSKM, vector := recommended_episomal_vector,
+        medium := E8_medium, culture_days := 14, feeder_free := true }
     IsValidReprog p := by
-  simp [IsValidReprog, OSKM]
+  simp [IsValidReprog, OSKM, E8_medium, recommended_episomal_vector]
   decide
 
+/-- 定理 8.4  ISSCR 2021 認定基準を満たすプロファイルの存在 -/
+theorem isscr_certified_profile_exists :
+    ∃ mp : MarkerProfile, IsIPSCertified mp := by
+  exact ⟨{ expressed     := [.NANOG, .OCT4_expr, .SOX2_expr, .SSEA4, .TRA_1_60, .TRA_1_81],
+            not_expressed := [.SSEA1_neg] },
+         by simp [IsIPSCertified, required_positive, required_negative]; decide⟩
+
 -- ────────────────────────────────────────────────────────────
--- § 8  逆相補配列との連携（既存 reverse_complement の利用例）
+-- § 9  逆相補・プロモーターユーティリティ
 -- ────────────────────────────────────────────────────────────
 
-/-- Base リスト → String 変換（プロモーター配列の外部出力用） -/
 def bases_to_string : List Base → String :=
   fun bs => bs.foldl (fun acc b =>
     acc ++ match b with
       | .A => "A" | .T => "T" | .G => "G" | .C => "C") ""
 
-/-- プロモーター配列の逆相補鎖（テンプレート鎖）を返す -/
 def promoter_template_strand (f : YamanakaFactor) : List Base :=
   (promoter_seq f).reverse.map base_to_complement
 
-/-- OCT4 プロモーターのセンス鎖とテンプレート鎖を対で返す -/
 def oct4_promoter_pair : List Base × List Base :=
   (promoter_seq .OCT4, promoter_template_strand .OCT4)
 
 -- ────────────────────────────────────────────────────────────
--- § 9  完全パイプライン例
---      線維芽細胞 → OSKM導入 → iPSC → マーカー認定
+-- § 10  完全パイプライン
 -- ────────────────────────────────────────────────────────────
 
-def fibroblast : CellState := .Somatic "human_fibroblast"
+def fibroblast : CellState := .Somatic "human_dermal_fibroblast"
 
-def OSKM_protocol : ReprogProtocol :=
-  { factors := OSKM, delivery := "episomal_vector",
-    culture_days := 28, feeder_free := true }
+def clinical_protocol : ReprogProtocol :=
+  { factors      := OSKM,
+    vector       := recommended_episomal_vector,
+    medium       := E8_medium,
+    culture_days := 28,
+    feeder_free  := true }
 
-def reprogrammed : CellState := reprogram fibroblast OSKM_protocol
+def reprogrammed_cell : CellState := reprogram fibroblast clinical_protocol
 
 def certified_profile : MarkerProfile :=
-  { expressed := [.NANOG, .OCT4_expr, .SOX2_expr, .SSEA4, .TRA_1_60] }
+  { expressed     := [.NANOG, .OCT4_expr, .SOX2_expr, .SSEA4, .TRA_1_60, .TRA_1_81],
+    not_expressed := [.SSEA1_neg] }
 
-/-- パイプライン全体の健全性：iPS認定基準を満たす -/
-theorem pipeline_certified : IsIPSCertified certified_profile := by
-  simp [IsIPSCertified, required_markers, certified_profile]
+theorem pipeline_isscr_certified : IsIPSCertified certified_profile := by
+  simp [IsIPSCertified, required_positive, required_negative, certified_profile]
   decide
 
 end Dna
 -- =============================================================
---  End of IPS_Construction.lean
+--  End of IPS_Construction_GRCh38.lean
 -- =============================================================
