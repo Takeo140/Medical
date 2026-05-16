@@ -72,12 +72,13 @@ def promoter_length (f : YamanakaFactor) : Nat :=
 /-- 細胞の多能性レベル（0 = 分化体細胞, 10 = 完全iPS） -/
 abbrev PluripotencyScore := Fin 11
 
-/-- 細胞状態 -/
+/-- 細胞状態
+    修正: DecidableEq を追加（reprogram の等価判定・定理証明に必要） -/
 inductive CellState : Type
   | Somatic          (cell_type : String)          -- 体細胞
   | PartialReprog    (score : PluripotencyScore)   -- 部分的リプログラミング
   | iPSC             (clone_id : String)           -- iPS細胞
-  deriving Repr
+  deriving Repr, DecidableEq  -- [FIX] DecidableEq を追加
 
 /-- 細胞状態の多能性スコアを取得 -/
 def cell_score : CellState → Nat
@@ -168,24 +169,27 @@ def reprogram (src : CellState) (p : ReprogProtocol) : CellState :=
 -- § 7  形式的定理（Theorem）
 -- ────────────────────────────────────────────────────────────
 
-/-- 定理 7.1  OSKM × 21日培養 → iPSC に到達する -/
+/-- 定理 7.1  OSKM × 21日培養 → iPSC に到達する
+    修正: ∃ id : String に decide 不可（String は無限型）
+          simp で具体値まで簡約後、exact ⟨_, rfl⟩ で証人を提供 -/
 theorem oskm_21days_yields_iPSC :
     let p : ReprogProtocol :=
       { factors := OSKM, delivery := "retrovirus",
         culture_days := 21, feeder_free := true }
     let src := CellState.Somatic "fibroblast"
     ∃ id, reprogram src p = CellState.iPSC id := by
-  simp [reprogram, protocol_score, OSKM, OSK]
-  decide
+  simp [reprogram, protocol_score, OSKM, OSK]  -- [FIX] decide → exact ⟨_, rfl⟩
+  exact ⟨_, rfl⟩
 
-/-- 定理 7.2  必須因子欠如 → 状態不変 -/
+/-- 定理 7.2  必須因子欠如 → 状態不変
+    修正: simp [reprogram] が src = src に帰着して閉じる
+          全称量化変数 src に decide は使えない（除去） -/
 theorem missing_oct4_no_change (src : CellState) :
     let p : ReprogProtocol :=
       { factors := [.SOX2, .KLF4], delivery := "episomal",
         culture_days := 21, feeder_free := false }
     reprogram src p = src := by
-  simp [reprogram]
-  decide
+  simp [reprogram]  -- [FIX] decide を削除（simp が rfl で閉じる）
 
 /-- 定理 7.3  有効プロトコルは IsValidReprog を満たす -/
 theorem OSKM_protocol_valid :
