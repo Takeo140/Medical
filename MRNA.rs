@@ -1,5 +1,5 @@
 // Yamamoto Core Logic: DNA to mRNA Compiler — Production Build
-// Licensed under CC BY 4.0 (Author: Takeo Yamamoto / 山本健夫)
+// Licensed under Apache 2.0 (Author: Takeo Yamamoto / 山本健夫)
 // ORCID: 0009-0003-0440-474X
 
 use std::collections::HashMap;
