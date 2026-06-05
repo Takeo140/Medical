@@ -29,12 +29,10 @@ theorem cancer_can_be_logically_cured
     (wt mutated : List Exon)
     (h_differs : assemble_gene wt ≠ assemble_gene mutated) :
     ∃ repair, is_optimal_repair wt mutated repair := by
-  refine ⟨wt, rfl, ?_, ?_⟩
-  · -- assemble_gene wt ≠ assemble_gene mutated
-    exact h_differs
-  · -- ∀ e ∈ wt, ∃ e_wt ∈ wt, e.id = e_wt.id
-    intro e he
-    exact ⟨e, he, rfl⟩
+  use wt
+  refine ⟨rfl, h_differs, ?_⟩
+  intro e he
+  exact ⟨e, he, rfl⟩
 
 /-! 4. 実例検証 -/
 section PrecisionMedicine
@@ -52,7 +50,7 @@ lemma kras_is_cancer : is_cancerous kras_g12d kras_normal :=
 lemma kras_exons_differ :
     assemble_gene [⟨1, [kras_normal]⟩] ≠
     assemble_gene [⟨1, [kras_g12d]⟩] := by
-  simp [assemble_gene, kras_normal, kras_g12d]
+  unfold assemble_gene kras_normal kras_g12d
   decide
 
 /-- KRAS G12D は論理的に修復可能 -/
