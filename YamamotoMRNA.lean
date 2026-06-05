@@ -153,6 +153,7 @@ def transcribe : List DnaNucleotide → List RnaNucleotide :=
     | .G => .G | .A => .A | .C => .C | .T => .U
 
 -- [FIX 2] エラーに元の配列長を渡すヘルパーを分離
+-- [FIX 7] 型シグネチャを明示的に追加
 private def toCodensAux : List RnaNucleotide → Nat → Except MrnaError (List Codon)
   | [],                  _ => .ok []
   | a :: b :: c :: rest, n => do
@@ -240,6 +241,7 @@ lemma optimize_multiple_of_three (protein : List AminoAcid) :
 -- [FIX 5] Float除算は Lean 4 で証明不可。自然数レベルの等価命題に置き換える
 -- gcContent_range（Float版）は sorry なしに証明できないため削除。
 -- 代替：GC塩基数 ≤ 全長 を自然数で保証（意味的に同等の上界）
+-- [FIX 8] lemma 名を補題の内容に合わせて修正
 lemma gcCount_le_length (seq : List RnaNucleotide) :
     (seq.filter fun n => n == .G || n == .C).length ≤ seq.length :=
   List.length_filter_le _ _
