@@ -35,11 +35,15 @@ noncomputable def decay_path (b : BioState) (t : ℝ) : BioState where
 lemma decay_path_at_zero (b : BioState) : decay_path b 0 = b := by
   ext <;> simp [decay_path, Real.exp_zero]
 
-/-- V(path t) = V(initial) * exp(-t)² という具体形 -/
+/-- V(path t) = V(initial) * exp(-2t) という具体形 -/
 lemma potential_along_decay (b : BioState) (t : ℝ) :
     optimization_potential (decay_path b t) =
-    optimization_potential b * Real.exp (-t) ^ 2 := by
-  simp only [optimization_potential, decay_path]; ring
+    optimization_potential b * Real.exp (-2 * t) := by
+  simp only [optimization_potential, decay_path]
+  have h : (Real.exp (-t)) ^ 2 = Real.exp (-2 * t) := by
+    rw [← Real.exp_natCast]; norm_num [Real.exp_mul, Real.exp_neg, Real.exp_two]
+  simp only [h]
+  ring
 
 theorem universal_recovery_possible (initial : BioState) :
     ∃ path : ℝ → BioState,
@@ -48,10 +52,11 @@ theorem universal_recovery_possible (initial : BioState) :
         Filter.atTop (nhds 0) := by
   refine ⟨decay_path initial, decay_path_at_zero initial, ?_⟩
   simp_rw [potential_along_decay]
-  -- exp(-t)^2 → 0 （Mathlibの定理を使用）
-  have h_exp : Filter.Tendsto (fun t : ℝ => Real.exp (-t) ^ 2)
+  -- exp(-2t) → 0 as t → ∞
+  have h_exp : Filter.Tendsto (fun t : ℝ => Real.exp (-2 * t))
       Filter.atTop (nhds 0) := by
-    simpa [zero_pow] using Real.tendsto_exp_neg_atTop_nhds_zero.pow 2
-  simpa [mul_zero] using h_exp.const_mul (optimization_potential initial)
+    exact Real.tendsto_exp_atBot_nhds_zero.comp (tendsto_neg_atTop_iff.mpr tendsto_atTop_id)
+  exact mul_zero (optimization_potential initial) ▸
+    Filter.Tendsto.mul_const h_exp (optimization_potential initial)
 
 end UniversalOptimizationKernel
