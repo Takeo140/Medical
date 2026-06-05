@@ -127,7 +127,7 @@ private lemma fd_foldl_zip_self (wt : List Codon) :
 private lemma fd_score_cast_nonneg (wt s : List Codon) :
     (0 : ℝ) ≤ ↑((List.zip wt s).foldl
       (fun acc (p : Codon × Codon) => acc + fd_score_pair p.1 p.2) 0) :=
-  by exact_mod_cast Nat.zero_le _
+  Nat.cast_nonneg _
 
 -- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 -- 主補題・定理
@@ -153,9 +153,12 @@ lemma wildtype_is_valid_repair (wt mutated : List Codon) :
     野生型配列が常に最適修復として存在する -/
 theorem optimal_repair_exists (wt mutated : List Codon) :
     ∃ (optimal_patch : List Codon), is_optimal_repair wt mutated optimal_patch := by
-  refine ⟨wt, wildtype_is_valid_repair wt mutated, fun other _ => ?_⟩
-  rw [wildtype_max_fd_score]
-  exact fd_score_le_100 wt other
+  use wt
+  constructor
+  · exact wildtype_is_valid_repair wt mutated
+  · intro other _
+    rw [wildtype_max_fd_score]
+    exact fd_score_le_100 wt other
 
 /-- 12. 統合失調症DRD2定理 -/
 theorem schizophrenia_drd2_optimal_patch (mutated_seq : List Codon) :
