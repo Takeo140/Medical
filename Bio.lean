@@ -47,10 +47,6 @@ def next_organic_state (org : Organism) : ℝ :=
 def IsDynamicEquilibrium (org : Organism) : Prop :=
   org.S = org.α * org.X
 
----
-
-### 生命の根本定理 (Fundamental Theorem of Dynamic Equilibrium)
-
 /-- 
   【定理：動的平衡の維持とホメオスタシス】
   生体システムが「分解の速度（α * X）」をぴったり補うだけの「合成の流動（S）」
