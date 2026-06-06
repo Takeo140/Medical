@@ -1,3 +1,5 @@
+Author Takeo Yamamoto License Apache 2.0
+
 import Mathlib.Tactic
 
 /-!
