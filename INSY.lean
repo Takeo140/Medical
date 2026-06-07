@@ -1,42 +1,55 @@
-Author Takeo Yamamoto Licence Apache 2.0
-
+-- Author: Takeo Yamamoto
+-- License: Apache 2.0
 import Mathlib.Tactic
 
 namespace IntegratedSynthesis
 
--- 1. HSC（造血幹細胞）を追加
-inductive SomaticCellType | Fibroblast | Osteoblast | HSC deriving DecidableEq, Repr
-inductive TranscriptionFactor | RUNX2 | HSC_Factors | P63 deriving DecidableEq, Repr
+-- 1. 細胞型・転写因子
+inductive SomaticCellType
+  | Fibroblast | Osteoblast | HSC
+  deriving DecidableEq, Repr
 
--- 2. 状態に「遺伝子バグ」の有無を追加
+inductive TranscriptionFactor
+  | RUNX2 | HSC_Factors | P63
+  deriving DecidableEq, Repr
+
+-- 2. 細胞状態
 structure CellState where
-  type : SomaticCellType
-  factors : List TranscriptionFactor
-  is_cancerous : Bool
-  has_genetic_defect : Bool -- NEW: 生まれつきのバグ（白血病リスクなど）があるか
+  type              : SomaticCellType
+  factors           : List TranscriptionFactor
+  is_cancerous      : Bool
+  has_genetic_defect : Bool
 
+-- 3. 変換ルール
 def requiredFactor : SomaticCellType → TranscriptionFactor
   | .HSC        => .HSC_Factors
   | .Osteoblast => .RUNX2
   | .Fibroblast => .P63
 
--- 3. 安全装置のアップデート：バグ修正済みの時のみコンパイル（変換）を通す
+-- 4. 安全変換エンジン（②修正: 全 target に対応）
 def convert_ultimate_safe (s : CellState) (target : SomaticCellType) : Option CellState :=
   let new_factors := s.factors ++ [requiredFactor target]
-  
-  -- ガード条件：「癌化していない」かつ「遺伝子バグが修正されている（false）」こと
-  if s.has_genetic_defect == false ∧ target == .HSC ∧ new_factors.contains .HSC_Factors then
-    some { type := target, factors := new_factors, is_cancerous := false, has_genetic_defect := false }
+  -- ガード: 遺伝子バグがなく、対応因子が揃っていること（④修正: == false → = false）
+  if s.has_genetic_defect = false ∧ new_factors.contains (requiredFactor target) then
+    some { type              := target
+           factors           := new_factors
+           is_cancerous      := false
+           has_genetic_defect := false }
   else
     none
 
--- 4. 究極の安全定理
-theorem absolute_safety_guarantee 
-  (donor : CellState) (target : SomaticCellType)
-  (h_success : convert_ultimate_safe donor target = some result) :
-  result.is_cancerous = false ∧ result.has_genetic_defect = false := by
-  cases h : convert_ultimate_safe donor target <;> simp [convert_ultimate_safe, h] at h_success
-  subst h_success
-  split <;> simp_all
+-- 5. 究極の安全定理（①③修正）
+theorem absolute_safety_guarantee
+    (donor  : CellState)
+    (target : SomaticCellType)
+    (result : CellState)                                      -- ①明示宣言
+    (h_success : convert_ultimate_safe donor target = some result) :
+    result.is_cancerous = false ∧ result.has_genetic_defect = false := by
+  simp only [convert_ultimate_safe] at h_success             -- ③定義を展開
+  split_ifs at h_success with hg                             -- ③ if を分解
+  · injection h_success with heq                            -- Some の単射性
+    subst heq
+    exact ⟨rfl, rfl⟩
+  · exact absurd h_success (by simp)
 
 end IntegratedSynthesis
