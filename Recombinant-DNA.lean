@@ -55,7 +55,6 @@ inductive ExpressionHost : Type
 /-- 
   【コドン最適化関数】
   与えられたアミノ酸とホスト生物種に対し、最適コドン（頻度が最も高いコドン）を一意に割り当てる写像。
-  この写像により、発現ホストに最適化された高効率CDS（コード領域）が数学的に決定される。
 -/
 def optimize_codon (aa : AminoAcid) (host : ExpressionHost) : Codon :=
   match host with
@@ -105,11 +104,7 @@ def restriction_site : RestrictionEnzyme → DNASeq
   | .BamHI   => [.G, .G, .A, .T, .C, .C] -- GGATCC
   | .HindIII => [.A, .A, .G, .C, .T, .T] -- AAGCTT
 
-/--
-  【組換え構築物（構造体）】
-  5'制限酵素、3'制限酵素、ホスト発現系、目的ペプチドを受け取り、
-  イン・シリコで物理的に組換え結合された最終DNA配列を格納する。
--/
+/-- 組換え構築物（構造体） -/
 structure RecombinantConstruct where
   enzyme5     : RestrictionEnzyme
   enzyme3     : RestrictionEnzyme
@@ -128,9 +123,8 @@ def assemble_construct (c : RecombinantConstruct) : DNASeq :=
 
 /-- 
   【不変定理1】コドン最適化の逆写像定理
-  どのようなホスト生物種(host)を選択しても、最適化されたコドンを「翻訳」すると、
-  元の単一アミノ酸(aa)に100%正確に還元（逆写像）されることを証明する。
-  （遺伝子組換えの論理的整合性：設計コードがアミノ酸の変性を起こさない保証）
+  どのようなホスト生物種を選択しても、最適化されたコドンを「翻訳」すると、
+  元の単一アミノ酸に100%正確に還元（逆写像）されることを証明する。
 -/
 theorem codon_optimization_is_faithful (aa : AminoAcid) (host : ExpressionHost) :
     translate_codon (optimize_codon aa host) = aa := by
@@ -138,19 +132,18 @@ theorem codon_optimization_is_faithful (aa : AminoAcid) (host : ExpressionHost) 
 
 /--
   【不変定理2】クローニング接合不変境界条件
-  組換えベクター（assemble_construct）の先端（先頭）は、
-  常に5'側で指定した制限酵素サイト（enzyme5）と一致し、後続のコドン最適化配列を汚染しないことを証明する。
+  組換えベクターの先端（先頭）は、常に5'側で指定した制限酵素サイトと一致し、
+  後続のコドン最適化配列を汚染しないことを証明する。
 -/
 theorem construct_starts_with_enzyme5 (c : RecombinantConstruct) :
     (assemble_construct c).take (restriction_site c.enzyme5).length = restriction_site c.enzyme5 := by
   simp [assemble_construct]
-  -- リストの結合特性（(A ++ B).take A.length = A）を用いて自動簡約
   apply List.take_left
 
 /--
   【不変定理3】翻訳整合性保存定理
   任意のペプチド配列について、コドン最適化して得られたDNA配列全体の長さは、
-  元のペプチドのアミノ酸数の正確に3倍（コドンの3塩基物理構造）となる。
+  元のペプチドのアミノ酸数の正確に3倍となる。
 -/
 theorem codon_length_invariant (pep : PeptideSeq) (host : ExpressionHost) :
     (optimize_peptide pep host).length = pep.length * 3 := by
@@ -158,9 +151,50 @@ theorem codon_length_invariant (pep : PeptideSeq) (host : ExpressionHost) :
   | nil => rfl
   | cons x xs ih =>
       simp [optimize_peptide]
-      -- 各アミノ酸（コドン1つ）は3つの塩基（長さ3）に変換される
       have h_codon_len : (codon_to_seq (optimize_codon x host)).length = 3 := by
         cases host <;> cases x <;> rfl
       simp [h_codon_len, ih]
       omega
-```
+
+/- =========================================================
+   §5  高度物理特性と自己切断排除定理 (2026年 拡張アップグレード)
+   ========================================================= -/
+
+/-- 塩基がGCペア（熱力学的結合が強い水素結合3本）であるかを判定する述語 -/
+def is_gc : Nucleotide → Bool
+  | .C => true
+  | .G => true
+  | _  => false
+
+/-- DNA配列内のGC塩基数を計上する関数 -/
+def count_gc : DNASeq → Nat
+  | [] => 0
+  | x :: xs => (if is_gc x then 1 else 0) + count_gc xs
+
+/--
+  【不変定理4】GCコンテンツ加法保存性定理
+  DNA配列がどれほど結合（アセンブリ）されても、全体のGC塩基数は、
+  各コンポーネント（制限酵素サイト＋CDS等）のGC数の単純な代数和に一致することを証明する。
+  （熱力学・二次構造予測の不変バウンダリ検証の数学的基礎となる）
+-/
+theorem count_gc_append (seq1 seq2 : DNASeq) :
+    count_gc (seq1 ++ seq2) = count_gc seq1 + count_gc seq2 := by
+  induction seq1 with
+  | nil => simp [count_gc]
+  | cons x xs ih =>
+      simp [count_gc]
+      rw [ih]
+      omega
+
+/--
+  【不変定理5】大腸菌用最適化配列におけるインサート内部EcoRIサイト末尾の非存在定理
+  EcoRIの認識配列は「GAATTC」であり、その末尾は「C」である。
+  大腸菌用にコドン最適化された配列（CDS）において、任意のコドンの3番目の位置（末尾塩基）は、
+  数理的に「絶対にCにならない」ことを証明する。
+  
+  これにより、コドン境界が「GAATTC」の境界と一致する形での偶発的なEcoRIサイトの創出（自己切断バグ）が、
+  インサートの設計段階で数学的に100%排除されていることを形式的に保証する。
+-/
+theorem ecoli_codon_third_never_c (aa : AminoAcid) :
+    (optimize_codon aa .EColi).n3 ≠ .C := by
+  cases aa <;> rfl
