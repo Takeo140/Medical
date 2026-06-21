@@ -1,6 +1,8 @@
 -- 直接変換（トランスダイファレンシェーション）形式化
 -- F-Theory A1–A4 準拠 / Apache 2.0
 -- Takeo Yamamoto
+import Mathlib.Data.List.Basic
+import Mathlib.Tactic.Linarith
 
 /- =========================================================
    §1  細胞種・分化能階層 (A4: 階層構造)
