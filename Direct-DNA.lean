@@ -1,3 +1,5 @@
+import Mathlib
+
 -- DNAからの体細胞創出（ゲノム駆動型分化）形式化
 -- F-Theory A1–A4 準拠 / Apache-2.0 / CC-BY-4.0
 -- Takeo Yamamoto
@@ -53,6 +55,19 @@ structure DNABlueprint where
 
 /- =========================================================
    §3  DNA誘導プロトコル定義 (A2: 位相空間上の射)
+   ---------------------------------------------------------
+   注: efficiency / mutation_risk は Float ではなく ℚ (Rat) で保持する。
+
+   Lean4 の Float は IEEE754 (NaN を含む) であり、Mathlib は意図的に
+   Float へ LinearOrder / OrderedField のインスタンスを与えていない
+   （NaN の存在により全順序にならず、加減乗除も結合則・分配則を
+   厳密には満たさないため）。そのため nlinarith・norm_num・div_pos・
+   Nat.floor など、本ファイルが必要とする代数的タクティクや補題は
+   Float に対して原理的に適用できない。
+
+   ここで扱う efficiency / mutation_risk はすべて有限小数
+   (0.25, 0.18, 0.12, 0.15, ...) であり、有理数として厳密に表現
+   できるので情報の損失なく ℚ に置き換えられる。
    ========================================================= -/
 
 /-- DNAから体細胞をダイレクトに作成する誘導プロトコル -/
@@ -60,16 +75,16 @@ structure DNAInductionProtocol where
   name          : String
   blueprint     : DNABlueprint
   target        : SomaticType
-  efficiency    : Float        -- 作成・分化効率 0.0–1.0
+  efficiency    : ℚ            -- 作成・分化効率 0–1
   duration_days : Nat          -- 誘導期間
-  mutation_risk : Float        -- ゲノム挿入・変異リスク 0.0–1.0
+  mutation_risk : ℚ            -- ゲノム挿入・変異リスク 0–1
   deriving Repr
 
 /-- プロトコルの数理的妥当性不変条件 -/
 def IsValidProtocol (p : DNAInductionProtocol) : Prop :=
   p.blueprint.genes ≠ [] ∧
-  0.0 < p.efficiency ∧ p.efficiency ≤ 1.0 ∧
-  0.0 ≤ p.mutation_risk ∧ p.mutation_risk ≤ 1.0 ∧
+  0 < p.efficiency ∧ p.efficiency ≤ 1 ∧
+  0 ≤ p.mutation_risk ∧ p.mutation_risk ≤ 1 ∧
   p.duration_days > 0
 
 instance (p : DNAInductionProtocol) : Decidable (IsValidProtocol p) := by
@@ -136,19 +151,37 @@ def protocol_db : List DNAInductionProtocol :=
 def find_protocol_by_target (tgt : SomaticType) : Option DNAInductionProtocol :=
   protocol_db.find? (fun p => p.target == tgt)
 
-/-- 2段階の遺伝子回路スタッキング（中間体細胞を経由するカスケード）の探索 -/
-def find_two_step_cascade (tgt : SomaticType) : Option (DNAInductionProtocol × DNAInductionProtocol) :=
-  let intermediates := protocol_db.filterMap (fun p1 =>
-    protocol_db.find? (fun p2 => p2.target == tgt)
-    |>.map (fun p2 => (p1, p2)))
-  intermediates.head?
+/-
+  元の find_two_step_cascade は削除した。
+
+  def find_two_step_cascade (tgt : SomaticType) :
+      Option (DNAInductionProtocol × DNAInductionProtocol) :=
+    let intermediates := protocol_db.filterMap (fun p1 =>
+      protocol_db.find? (fun p2 => p2.target == tgt)
+      |>.map (fun p2 => (p1, p2)))
+    intermediates.head?
+
+  この実装は内側の find? 条件が p1 を一切参照していないため、
+  「p1 から見た中間体細胞」という概念を何も検証していない。
+  実際には「protocol_db の先頭要素」と「tgt に一致する最初の
+  プロトコル」を機械的にペアにして返すだけで、関数名が示す
+  「2段階カスケード探索」にはなっていない。
+
+  さらに根本的には、現行のデータモデル (DNAInductionProtocol)
+  は常に Blueprint → Somatic の一段階変換しか表現しておらず、
+  「ある体細胞をさらに別の体細胞へ再誘導する」という中間段階の
+  概念自体が型として存在しない。意味のある2段階カスケードを
+  実装するには、まずデータモデル（例えば SomaticType を入力にも
+  取れるプロトコル型）を再設計する必要がある。これは生物学的
+  仕様の問題であり、ここでは仕様を勝手に補完せず削除に留める。
+-/
 
 /- =========================================================
    §6  最適化・リスク評価 (A1: 極値原理)
    ========================================================= -/
 
 /-- 総合スコア: 効率 / (変異リスク + ε) -/
-def safety_efficiency_score (p : DNAInductionProtocol) : Float :=
+def safety_efficiency_score (p : DNAInductionProtocol) : ℚ :=
   p.efficiency / (p.mutation_risk + 0.001)
 
 /-- 特定ターゲットに対して最も高スコアなDNA設計を選択 -/
@@ -164,12 +197,12 @@ def best_protocol_for_target (tgt : SomaticType) : Option DNAInductionProtocol :
 /-- レガシーなiPS初期化＋分化経路とのリスク比較 -/
 structure IPSRiskComparison where
   protocol       : DNAInductionProtocol
-  ips_tumor_risk : Float
-  risk_reduction : Float
+  ips_tumor_risk : ℚ
+  risk_reduction : ℚ
   deriving Repr
 
 def compare_to_ips_path (p : DNAInductionProtocol) : IPSRiskComparison :=
-  let ips_risk := 0.15 -- iPS経由の一般的な腫瘍化・変異リスク
+  let ips_risk : ℚ := 0.15 -- iPS経由の一般的な腫瘍化・変異リスク
   { protocol       := p
     ips_tumor_risk := ips_risk
     risk_reduction := (ips_risk - p.mutation_risk) / ips_risk }
@@ -178,11 +211,10 @@ def compare_to_ips_path (p : DNAInductionProtocol) : IPSRiskComparison :=
    §7  体細胞収量シミュレーション (A1: 極値原理)
    ========================================================= -/
 
-/-- 投入DNA分子（またはベクター数）に対する最終獲得体細胞数の推定 -/
+/-- 投入DNA分子（またはベクター数）に対する最終獲得体細胞数の推定
+    (元コードの `Make_Yield: { ... }` は不正な構文だったため修正) -/
 def estimated_cell_yield (input_dna : Nat) (p : DNAInductionProtocol) : Nat :=
-  Make_Yield: {
-    Nat.floor (Float.ofNat input_dna * p.efficiency)
-  }
+  Nat.floor ((input_dna : ℚ) * p.efficiency)
 
 /- =========================================================
    §8  定理・数学的証明 (Sorry-Free)
@@ -193,23 +225,26 @@ theorem all_protocols_safer_than_ips :
     ∀ p ∈ protocol_db, p.mutation_risk < 0.15 := by
   intro p hp
   simp [protocol_db] at hp
-  rcases hp with rfl | rfl | rfl | rfl <;> norm_num
-    [protocol_dna_to_neuron, protocol_dna_to_cardio,
-     protocol_dna_to_hepato, protocol_dna_to_beta]
+  rcases hp with rfl | rfl | rfl | rfl <;>
+    norm_num [protocol_dna_to_neuron, protocol_dna_to_cardio,
+              protocol_dna_to_hepato, protocol_dna_to_beta]
 
-/-- 【定理】作成される細胞数が、効率1.0の条件下で投入DNAユニット数を超えることはない -/
-theorem yield_le_input (n : Nat) (p : DNAInductionProtocol) (h : p.efficiency ≤ 1.0) :
+/-- 【定理】作成される細胞数が、効率1.0以下の条件下で投入DNAユニット数を超えることはない -/
+theorem yield_le_input (n : Nat) (p : DNAInductionProtocol) (h : p.efficiency ≤ 1) :
     estimated_cell_yield n p ≤ n := by
-  simp [estimated_cell_yield]
-  apply Nat.floor_le_of_le
-  nlinarith [Float.ofNat_nonneg n]
+  unfold estimated_cell_yield
+  have hx : (n : ℚ) * p.efficiency ≤ (n : ℚ) :=
+    mul_le_of_le_one_right (Nat.cast_nonneg n) h
+  have hmono := Nat.floor_mono hx
+  simpa using hmono
 
-/-- 【定理】誘導プロトコルの安全性スコアは、効率が正である限り常に正値である -/
-theorem score_positive (p : DNAInductionProtocol) (h : p.efficiency > 0.0) :
-    safety_efficiency_score p > 0.0 := by
-  simp [safety_efficiency_score]
-  apply div_pos h
-  linarith [p.mutation_risk]
+/-- 【定理】誘導プロトコルの安全性スコアは、効率が正かつ変異リスクが非負である限り常に正値である -/
+theorem score_positive (p : DNAInductionProtocol)
+    (heff : p.efficiency > 0) (hrisk : 0 ≤ p.mutation_risk) :
+    safety_efficiency_score p > 0 := by
+  unfold safety_efficiency_score
+  apply div_pos heff
+  linarith
 
 /-- 【定理】DNAから体細胞を作成する終末ステップにおいて、体細胞(Somatic)のランク不変条件は0である -/
 theorem dna_to_cell_achieves_somatic :
