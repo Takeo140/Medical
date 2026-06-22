@@ -1,3 +1,4 @@
+License Apach 2.0 CC BY 4.0 Takeo Yamamoto
 inductive Dna : Type := 
   | mkDna : String → Dna
 
