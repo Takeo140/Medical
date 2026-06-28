@@ -1,31 +1,56 @@
-# Medical
-## Meta-Axiom: Formalized Framework for Universal DNA/RNA Repair
+# Medical: Formalized Framework for Universal DNA/RNA Repair
 
-[![DOI](https://zenodo.org/badge/1190607689.svg)](https://doi.org/10.5281/zenodo.19249949)
+[![CI Status](https://github.com/Takeo140/Medical/actions/workflows/ci.yml/badge.svg)](https://github.com/Takeo140/Medical/actions)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENCE)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.19210030-blue)](https://doi.org/10.5281/zenodo.19210030)
 
-**Author:** Takeo Yamamoto  
-**Date:** March 2026, Kanazawa, Japan  
-**License:** Apache2.0
-DOI: (https://doi.org/10.5281/zenodo.19210030)
-
-### Synopsis
-This repository defines genetic diseases as **"information-space bugs"** and provides a universal mathematical framework to derive **optimal repair patches** using **Lean 4**. 
-
-By shifting from statistical medicine to **Formal Verification**, we provide immediate, computable mRNA sequences to "debug" human biology.
-
-### Core Logic
-* **Formalized Mapping:** Quantitative functional distance ($FD$) between mutant and wild-type sequences.
-* **Cost-Function Optimization:** Balances repair accuracy, expression efficiency, and safety penalties.
-* **Universal Existence Theorem:** Mathematically proves that an optimal repair patch exists for any finite codon-space mutation.
-
-### Implementation Strategy
-1.  **Logical Input:** Define target wild-type and mutant sequences in Lean 4.
-2.  **Autonomous Computation:** AI-driven derivation of the `optimal_patch`.
-3.  **Physical Output:** Immediate synthesis via existing mRNA manufacturing infrastructure (e.g., LNP platforms).
-
-### Statement of Open Access
-This work is released under **Apache2.0**. It is intended as a **Public Infrastructure** for humanity. By open-sourcing these "genetic security patches," we aim to bypass traditional pharmaceutical monopolies and provide low-cost, universal access to life-saving "Medical OS" updates.
+This repository provides a **Formal Verification (Lean 4)** model for genomic and molecular repair. By redefining genetic diseases and cellular anomalies as *"information-space bugs,"* this framework establishes a deterministic mathematical model to derive optimal repair patches (mRNA sequences) to safely and accurately "debug" biological systems.
 
 ---
-*Verified by Lean 4. Built for the era of Autonomous AI Research.*
-This framework provides a deterministic pre-screening layer for mRNA sequence design and variant effect evaluation.
+
+## 📖 Synopsis
+
+Traditional medicine often relies on statistical outcomes and trial-and-error sequencing. This project shifts the paradigm to **Formal Verification**, treating human biology as an operating system ("Medical OS") and mRNA as the physical delivery protocol for digital-to-biological security patches. 
+
+Through the use of the **Lean 4 interactive theorem prover**, we mathematically prove the existence and safety of optimal repair paths within a finite codon-space.
+
+### Core Logic & Mathematical Framework
+1. **Formalized Mapping**: Defining quantitative functional distance ($FD$) between mutant and wild-type sequences.
+2. **Cost-Function Optimization**: Balancing repair accuracy, translation/expression efficiency, and biological safety penalties.
+3. **Universal Existence Theorem**: Proving that for any finite codon-space mutation, a logically consistent and optimal repair patch exists.
+
+---
+
+## 🚀 Repository Structure & Modules
+
+This repository contains a comprehensive suite of formal proofs (`.lean`) and high-performance cross-platform kernels (`.rs`) covering various pathological and biological domains:
+
+### 1. Core Engine & Formalizations
+*   `medical.lean` / `Bio.lean` / `mRNA.lean`: Fundamental definitions of RNA, amino acids, and the core biological state machine.
+*   `UniversalOptimizationKernel.lean`: The mathematical kernel driving the cost-function optimization for sequence selection.
+*   `MCD.lean` (Meta Conflict Detector): Enforces strict safety standards and guards against logical contradictions or adverse cross-reactions.
+
+### 2. Targeted Disease & Genomic Repair Models
+*   **Oncology**: `Cancer.lean`, `CancerTotalRepair.lean`, `Cancer_driver_gene_repair.lean`, and `DNA-Cancer.lean`.
+*   **Neurology & Neurodiversity**: `Parkinson.lean`, `ALS.lean` (ALS repair modules), `Neural.lean` (Neural OS Debugger), and `Neuro.lean`.
+*   **Genetic & Rare Diseases**: `CFTR.lean` (Cystic Fibrosis), `DMD.lean` (Duchenne Muscular Dystrophy), and `LQTS.lean` (Long QT Syndrome).
+*   **Psychiatry & Behavior**: `MentalHealth.lean` and `Drd2.lean`.
+
+### 3. Synthesis & Vector Delivery Protocols
+*   `MRNA.lean` / `MRNA.rs` / `YamamotoMRNA.lean`: Core specifications for mRNA vaccine and therapeutic patch design.
+*   `VaccineEngine.lean` & `Immuno.lean`: Immune response optimization and automated sequence pre-screening.
+*   `IPS.lean` / `IPS.rs`: Induced pluripotent stem cell state transition and cellular reprogramming verification.
+*   `Plant.lean`: Extension of codon optimization and genome repair logic to plant biology.
+
+---
+
+## 🛠️ Getting Started
+
+### Prerequisites
+*   **Lean 4**: Install via `elan` to verify the mathematical proofs.
+*   **Rust**: Stable toolchain (required for high-speed calculation modules like `MRNA.rs` and `IPS.rs`).
+
+### Verification & Build
+To check the logical consistency and verify all Lean theorems locally, execute:
+```bash
+lake build
