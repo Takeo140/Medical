@@ -1,14 +1,19 @@
-License Apach 2.0 CC BY 4.0 Takeo Yamamoto
-inductive Dna : Type := 
-  | mkDna : String → Dna
+/-
+  License: Apache 2.0 / CC BY 4.0
+  Author: Takeo Yamamoto
 
-namespace Dna
+  細胞構造に合わせて DNA → Codon → AminoAcid → Protein → Cell → Protocol
+  までを一つに統合した抽象モデル。
+-/
 
-/-- 1. 文字ベースではなく、専用のBase型を介することで論理的整合性を高める -/
+namespace Bio
+
+/-- 1. DNA塩基（Takeoの4bit構造と同型） -/
 inductive Base : Type
   | A | T | G | C
   deriving Repr, DecidableEq
 
+/-- Char → Base の安全変換 -/
 def char_to_base : Char → Option Base
   | 'A' => some Base.A
   | 'T' => some Base.T
@@ -16,46 +21,108 @@ def char_to_base : Char → Option Base
   | 'C' => some Base.C
   | _   => none
 
-def base_to_complement : Base → Base
+/-- 相補的塩基 -/
+def complement : Base → Base
   | Base.A => Base.T
   | Base.T => Base.A
   | Base.G => Base.C
   | Base.C => Base.G
 
-/-- 2. reverse_complement の修正: 
-       Stringを直接弄るのではなく、検証済みのリストとして処理する -/
+/-- reverse_complement（検証済みリスト処理） -/
 def reverse_complement (s : String) : String :=
-  s.toList.reverse.map (λ c => 
+  s.toList.reverse.map (λ c =>
     match char_to_base c with
-    | some b => match base_to_complement b with
-                | Base.A => 'A'
-                | Base.T => 'T'
-                | Base.G => 'G'
-                | Base.C => 'C'
-    | none   => c -- DNA塩基以外はそのまま（またはエラー処理）
+    | some b =>
+        match complement b with
+        | Base.A => 'A'
+        | Base.T => 'T'
+        | Base.G => 'G'
+        | Base.C => 'C'
+    | none => c
   ).asString
 
-/-- 3. find_pattern の修正: 
-       drop/take の代わりにスライス的な整合性を高める -/
-def find_pattern (pattern : String) (dna : String) : List Nat :=
-  let p_len := pattern.length
-  let d_list := dna.toList
-  (List.range (dna.length - p_len + 1)).filter (λ i => 
-    (d_list.drop i).take p_len = pattern.toList
-  )
+/-- 2. Codon（3塩基） -/
+structure Codon where
+  b1 : Base
+  b2 : Base
+  b3 : Base
+  deriving Repr, DecidableEq
 
-/-- 4. Treatment の検証ロジックを Prop (命題) レベルへ引き上げる -/
-structure Treatment where
-  description : String
-  dosage : String
-  scheduling : String
+/-- String → Codon の安全変換 -/
+def string_to_codon (s : String) : Option Codon :=
+  match s.toList.map char_to_base with
+  | [some b1, some b2, some b3] => some ⟨b1, b2, b3⟩
+  | _ => none
 
-/-- 単なる Bool ではなく、証明可能な命題として定義 -/
-def IsValidProtocol (t : Treatment) : Prop :=
-  t.dosage ≠ "" ∧ t.scheduling ≠ ""
+/-- 3. アミノ酸（20種類） -/
+inductive AminoAcid : Type
+  | Ala | Arg | Asn | Asp | Cys
+  | Gln | Glu | Gly | His | Ile
+  | Leu | Lys | Met | Phe | Pro
+  | Ser | Thr | Trp | Tyr | Val
+  deriving Repr, DecidableEq
 
-/-- 実行時チェック用の決定可能インスタンス -/
-instance (t : Treatment) : Decidable (IsValidProtocol t) :=
-  by unfold IsValidProtocol; infer_instance
+/-- Codon → AminoAcid（簡略版） -/
+def codonToAA : Codon → Option AminoAcid
+  | ⟨Base.A, Base.T, Base.G⟩ => some AminoAcid.Met   -- 開始コドン
+  | ⟨Base.T, Base.A, Base.A⟩ => none                 -- 終止コドン
+  | _ => some AminoAcid.Ala                           -- 簡略化
 
-end Dna
+/-- 4. タンパク質の役割 -/
+inductive ProteinRole : Type
+  | Structural      -- 細胞骨格
+  | Enzyme          -- 代謝酵素
+  | Transcription   -- 転写因子
+  | Signal          -- シグナル伝達
+  deriving Repr, DecidableEq
+
+/-- タンパク質 -/
+structure Protein where
+  seq : List AminoAcid
+  role : ProteinRole
+  deriving Repr
+
+/-- 5. 細胞状態（iPS / Direct を含む） -/
+inductive CellState : Type
+  | Stem
+  | IPS
+  | Direct
+  | Differentiated
+  deriving Repr, DecidableEq
+
+/-- 細胞はタンパク質の集合として表現できる -/
+structure Cell where
+  proteins : List Protein
+  state : CellState
+  deriving Repr
+
+/-- 6. 細胞生成プロトコル（iPS / Direct） -/
+structure Protocol where
+  name : String
+  requiredRoles : List ProteinRole
+  targetState : CellState
+
+/-- iPS生成プロトコル -/
+def IPSProtocol : Protocol :=
+  { name := "iPS Induction",
+    requiredRoles := [ProteinRole.Transcription],
+    targetState := CellState.IPS }
+
+/-- Direct分化プロトコル -/
+def DirectProtocol : Protocol :=
+  { name := "Direct Conversion",
+    requiredRoles := [ProteinRole.Signal],
+    targetState := CellState.Direct }
+
+/-- プロトコル適用可能性（命題レベル） -/
+def CanApply (p : Protocol) (c : Cell) : Prop :=
+  ∀ r ∈ p.requiredRoles, ∃ pr ∈ c.proteins, pr.role = r
+
+instance (p : Protocol) (c : Cell) : Decidable (CanApply p c) :=
+  classical.decEq _
+
+/-- 7. 細胞状態遷移（プロセス思考の核） -/
+def applyProtocol (p : Protocol) (c : Cell) (h : CanApply p c) : Cell :=
+  { proteins := c.proteins, state := p.targetState }
+
+end Bio
