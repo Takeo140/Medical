@@ -1,5 +1,5 @@
 /-
-  License: CC BY 4.0
+  License: CC BY 4.0  Apache 2.0
   Author: Takeo Yamamoto (Extended for Leukemia Treatment / Hematopoiesis)
 
   白血病治療のメカニズムをモデル化。
