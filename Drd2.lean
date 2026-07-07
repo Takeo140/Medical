@@ -6,7 +6,7 @@ import Mathlib.Order.Bounds.Basic
 /-!
 # 論文題目: 統合失調症（DRD2）における構造的修復配列の数理的一意性の証明
 ## 著者: 山本 健夫 (Takeo Yamamoto)
-## ライセンス: CC BY 4.0 (Open Science)
+## ライセンス: CC BY 4.0 (Open Science) Apache 2.0
 -/
 
 namespace MetaAxiom
